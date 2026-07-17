@@ -1,0 +1,139 @@
+
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ระบบเบิกเวชภัณฑ์มิใช่ยา</title>
+    <script>
+      // Anti-FOUC script to set theme before React loads
+      (function() {
+        try {
+          var theme = localStorage.getItem('theme');
+          if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          var mourningMode = localStorage.getItem('mourningMode');
+          if (mourningMode === 'true') {
+            document.documentElement.classList.add('mourning-theme');
+          }
+        } catch (e) { console.error('Theme script failed', e); }
+      })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="manifest" href="./manifest.json">
+    
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ระบบเบิกเวชภัณฑ์มิใช่ยา">
+    <meta name="theme-color" content="#0f172a" />
+    
+    <style>
+      body {
+        font-family: 'Sarabun', sans-serif;
+      }
+
+      .mourning-theme {
+        -webkit-filter: grayscale(100%);
+        filter: grayscale(100%);
+      }
+
+      @media screen {
+        .print-only {
+          display: none !important;
+        }
+      }
+
+      @page {
+        size: A4 portrait;
+        margin: 1.5cm;
+      }
+
+      @media print {
+        html, body {
+            background-color: #fff !important;
+            color: #000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+        }
+
+        .no-print {
+          display: none !important;
+        }
+
+        .print-only {
+          display: block !important;
+          visibility: visible !important;
+        }
+
+        /* รีเซ็ตเลย์เอาท์เพื่อการพิมพ์ */
+        #root, main, div, section {
+          display: block !important;
+          position: static !important;
+          overflow: visible !important;
+          height: auto !important;
+          min-height: 0 !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+        }
+        th, td {
+            border: 1px solid #000 !important;
+            padding: 8px !important;
+            color: #000 !important;
+        }
+        
+        .print-signature-box {
+            border-top: 1px dotted #000;
+            margin-top: 2rem;
+            padding-top: 0.5rem;
+            text-align: center;
+            break-inside: avoid;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^18.2.0",
+    "react-dom": "https://esm.sh/react-dom@^18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@^18.2.0/client",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.53.0",
+    "xlsx": "https://esm.sh/xlsx@0.18.5",
+    "qrcode.react": "https://esm.sh/qrcode.react@3.1.0",
+    "react-barcode": "https://esm.sh/react-barcode@1.5.3",
+    "html5-qrcode": "https://esm.sh/html5-qrcode@2.3.8",
+    "@google/genai": "https://esm.sh/@google/genai@0.14.0",
+    "react-dom/": "https://esm.sh/react-dom@^18.2.0/",
+    "react/": "https://esm.sh/react@^18.2.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

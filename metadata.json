@@ -1,0 +1,8 @@
+{
+  "name": "ระบบเบิกเวชภัณฑ์มิใช่ยา",
+  "description": "A web application for hospital departments to handle medical supply requisitions and annual surveys. Administrators can manage products, users, departments, and the entire supply workflow.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "prompt": ""
+}

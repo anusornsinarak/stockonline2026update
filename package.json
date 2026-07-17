@@ -1,0 +1,33 @@
+{
+  "name": "ระบบเบิกเวชภัณฑ์มิใช่ยา",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "0.14.0",
+    "@heroicons/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.53.0",
+    "dotenv": "^17.3.1",
+    "html5-qrcode": "^2.3.8",
+    "playwright": "^1.61.1",
+    "qrcode.react": "^3.2.0",
+    "react": "^18.2.0",
+    "react-barcode": "1.5.3",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.3",
+    "recharts": "^3.7.0",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

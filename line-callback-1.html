@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>กำลังดำเนินการ...</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+      margin: 0; 
+      background-color: #f0f2f5; 
+      color: #333;
+    }
+    .container { text-align: center; padding: 20px; }
+    .spinner { 
+      border: 4px solid rgba(0,0,0,.1); 
+      width: 36px; 
+      height: 36px; 
+      border-radius: 50%; 
+      border-left-color: #007bff; 
+      animation: spin 1s ease infinite; 
+      margin: 0 auto 16px; 
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner"></div>
+    <p>กำลังเชื่อมต่อกับ LINE กรุณารอสักครู่...</p>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const state = params.get('state');
+        const error = params.get('error');
+        const storedState = sessionStorage.getItem('line_oauth_state');
+
+        // Check if this is a valid LINE callback (success or error)
+        if (state && state === storedState) {
+          if (error) {
+            // It's a LINE error callback
+            sessionStorage.setItem('line_callback_error', error);
+            sessionStorage.setItem('line_callback_error_description', params.get('error_description') || 'Unknown LINE error.');
+          } else if (code) {
+            // It's a LINE success callback
+            sessionStorage.setItem('line_callback_code', code);
+            sessionStorage.setItem('line_callback_state', state);
+          }
+        } else if (state) {
+            // State mismatch - security issue
+            sessionStorage.setItem('line_callback_error', 'state_mismatch');
+            sessionStorage.setItem('line_callback_error_description', 'OAuth state did not match.');
+        }
+        
+        // Always redirect to the main app, which will handle the stored data.
+        window.location.replace('/'); 
+
+      } catch (e) {
+        console.error("Error in LINE callback handler:", e);
+        sessionStorage.setItem('line_callback_error', 'processing_failed');
+        sessionStorage.setItem('line_callback_error_description', 'Could not process callback parameters.');
+        window.location.replace('/');
+      }
+    });
+  </script>
+</body>
+</html>
