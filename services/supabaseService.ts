@@ -899,8 +899,12 @@ export const supabaseService = {
                 id: s.id,
                 departmentId: s.department_id,
                 submittedAt: s.submitted_at,
+                rawQuantities: q,
                 quantities: q[fiscalYear] || {}
             };
+        }).filter(s => s.rawQuantities[fiscalYear] !== undefined).map(s => {
+             const { rawQuantities, ...rest } = s;
+             return rest;
         });
     },
 
