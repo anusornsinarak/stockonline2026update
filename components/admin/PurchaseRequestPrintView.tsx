@@ -97,24 +97,24 @@ const PurchaseRequestPrintView: React.FC<{
                     <col style={{width: '9%'}} />
                 </colgroup>
                 <thead>
-                    <tr className="text-center font-bold">
-                        <th rowSpan={2} className="border border-black p-0.5 align-middle">ลำดับ<br/>ที่</th>
-                        <th rowSpan={2} className="border border-black p-0.5 align-middle">รายการคุณลักษณะเฉพาะของเวชภัณฑ์มิใช่ยา</th>
-                        <th colSpan={2} className="border border-black p-0.5">ประมาณการใช้ต่อปี</th>
-                        <th colSpan={2} className="border border-black p-0.5">ปริมาณที่ใช้แล้วในปีงบ</th>
-                        <th colSpan={2} className="border border-black p-0.5">อัตราการใช้ต่อเดือน</th>
-                        <th rowSpan={2} className="border border-black p-0.5 align-middle">คงคลัง</th>
-                        <th colSpan={2} className="border border-black p-0.5">ปริมาณขอซื้อ</th>
+                    <tr className="text-center font-bold text-[10pt]">
+                        <th rowSpan={2} className="border border-black p-0 align-middle">ลำดับ<br/>ที่</th>
+                        <th rowSpan={2} className="border border-black p-0 align-middle">รายการคุณลักษณะเฉพาะของเวชภัณฑ์มิใช่ยา</th>
+                        <th colSpan={2} className="border border-black p-0">ประมาณการใช้ต่อปี</th>
+                        <th colSpan={2} className="border border-black p-0">ปริมาณที่ใช้แล้วในปีงบ</th>
+                        <th colSpan={2} className="border border-black p-0">อัตราการใช้ต่อเดือน</th>
+                        <th rowSpan={2} className="border border-black p-0 align-middle">คงคลัง</th>
+                        <th colSpan={2} className="border border-black p-0">ปริมาณขอซื้อ</th>
                     </tr>
-                    <tr className="text-center font-bold">
-                        <th className="border border-black p-0.5">จำนวน</th>
-                        <th className="border border-black p-0.5">มูลค่า</th>
-                        <th className="border border-black p-0.5">จำนวน</th>
-                        <th className="border border-black p-0.5">มูลค่า</th>
-                        <th className="border border-black p-0.5">จำนวน</th>
-                        <th className="border border-black p-0.5">มูลค่า</th>
-                        <th className="border border-black p-0.5">จำนวน</th>
-                        <th className="border border-black p-0.5">มูลค่า</th>
+                    <tr className="text-center font-bold text-[10pt]">
+                        <th className="border border-black p-0">จำนวน</th>
+                        <th className="border border-black p-0">มูลค่า</th>
+                        <th className="border border-black p-0">จำนวน</th>
+                        <th className="border border-black p-0">มูลค่า</th>
+                        <th className="border border-black p-0">จำนวน</th>
+                        <th className="border border-black p-0">มูลค่า</th>
+                        <th className="border border-black p-0">จำนวน</th>
+                        <th className="border border-black p-0">มูลค่า</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -131,17 +131,17 @@ const PurchaseRequestPrintView: React.FC<{
 
                         return (
                             <tr key={item.id || product.id}>
-                                <td className="border border-black p-1 text-center">{index + 1}</td>
-                                <td className="border border-black p-1 text-sm truncate" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{product.name}</td>
-                                <td className="border border-black p-1 text-right">{formatNumber(lastYearUsage)}</td>
-                                <td className="border border-black p-1 text-right">{formatCurrency(annualValue)}</td>
-                                <td className="border border-black p-1 text-center">-</td>
-                                <td className="border border-black p-1 text-center">-</td>
-                                <td className="border border-black p-1 text-right">{formatNumber(monthlyUsage)}</td>
-                                <td className="border border-black p-1 text-right">{formatCurrency(monthlyValue)}</td>
-                                <td className="border border-black p-1 text-right">{stock !== undefined ? formatNumber(stock) : '-'}</td>
-                                <td className="border border-black p-1 text-right">{formatNumber(item.quantity)}</td>
-                                <td className="border border-black p-1 text-right">{formatCurrency(purchaseValue)}</td>
+                                <td className="border border-black p-0 text-center text-xs">{index + 1}</td>
+                                <td className="border border-black p-0 px-1 text-[10pt] truncate" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{product.name}</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{formatNumber(lastYearUsage)}</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{formatCurrency(annualValue)}</td>
+                                <td className="border border-black p-0 px-1 text-center text-[10pt]">-</td>
+                                <td className="border border-black p-0 px-1 text-center text-[10pt]">-</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{formatNumber(monthlyUsage)}</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{formatCurrency(monthlyValue)}</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{stock !== undefined ? formatNumber(stock) : '-'}</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{formatNumber(item.quantity)}</td>
+                                <td className="border border-black p-0 px-1 text-right text-[10pt]">{formatCurrency(purchaseValue)}</td>
                             </tr>
                         );
                     })}

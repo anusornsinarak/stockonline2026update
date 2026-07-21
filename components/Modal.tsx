@@ -28,7 +28,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
   return (
     <div
       // FIX: Corrected typo 'fullscreen' to 'fullscreen' to ensure correct styling.
-      className={`fixed print:absolute print:inset-0 inset-0 bg-black bg-opacity-50 print:bg-transparent z-50 flex justify-center items-center print:items-start print:justify-start print:p-0 ${size === 'fullscreen' ? '' : 'p-4'} ${wrapperClassName || ''}`}
+      className={`fixed print:absolute print:inset-0 inset-0 bg-black bg-opacity-50 print:bg-white z-50 flex justify-center items-center print:items-start print:justify-start print:p-0 ${size === 'fullscreen' ? '' : 'p-4'} ${wrapperClassName || ''}`}
       onClick={onClose}
     >
       <div
