@@ -44,9 +44,13 @@ const PurchaseRequestPrintView: React.FC<{
                 }
             `}</style>
             
-            <div className="flex items-start mb-6 relative">
-                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Garuda_emblem_of_Thailand.svg/200px-Garuda_emblem_of_Thailand.svg.png" alt="Garuda" className="h-16 absolute left-0 top-0 object-contain grayscale" style={{ filter: 'grayscale(100%)' }} />
-                 <h1 className="font-bold text-center w-full mt-4" style={{fontSize: '29pt'}}>บันทึกข้อความ</h1>
+            <div className="flex items-center mb-6">
+                 <div className="w-24 flex-shrink-0">
+                     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Garuda_emblem_of_Thailand.svg/200px-Garuda_emblem_of_Thailand.svg.png" alt="Garuda" className="h-20 object-contain mx-auto" />
+                 </div>
+                 <div className="flex-grow flex justify-center -ml-24">
+                     <h1 className="font-bold text-center" style={{fontSize: '29pt'}}>บันทึกข้อความ</h1>
+                 </div>
             </div>
             
             <div className="space-y-1 mt-2">
@@ -57,7 +61,7 @@ const PurchaseRequestPrintView: React.FC<{
                 <div className="flex justify-between items-baseline">
                     <p className="flex-1">
                         <span className="font-bold" style={{ fontSize: '20pt', display: 'inline-block', width: '3.5cm' }}>ที่</span>
-                        <span>{`ปจ 0033.201/2/${po.poNumber || '.........'}`}</span>
+                        <span>{po.poNumber || 'ปจ 0033.201/2/.........'}</span>
                     </p>
                     <p className="flex-1 pl-8">
                         <span className="font-bold" style={{ fontSize: '20pt', marginRight: '1rem' }}>วันที่</span>

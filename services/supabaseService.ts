@@ -480,7 +480,7 @@ export const supabaseService = {
                 requisition_id: reqId, 
                 product_id: i.productId, 
                 quantity: i.quantity,
-                price_per_unit: i.price_per_unit, 
+                price_per_unit: i.pricePerUnit, 
                 status: i.status || 'Pending',
                 approved_quantity: i.approved_quantity, 
                 department_stock_on_submit: i.department_stock_on_submit
@@ -1177,7 +1177,7 @@ export const supabaseService = {
             createdAt: new Date(p.created_at),
             orderedAt: p.ordered_at ? new Date(p.ordered_at) : null,
             items: (p as any).purchase_order_items.map((i: any) => ({
-                id: i.id, productId: i.product_id, quantity: i.quantity, price_per_unit: i.price_per_unit
+                id: i.id, productId: i.product_id, quantity: i.quantity, pricePerUnit: i.price_per_unit
             })),
             committees: (p as any).po_committees.map((c: any) => ({
                 id: c.id, name: c.name, position: c.position, role: c.role as any, ordering: c.ordering
@@ -1452,7 +1452,7 @@ export const supabaseService = {
     async getPurchaseOrderForReceiving(poId: string): Promise<any> {
         const { data } = await supabase.from('purchase_orders').select('*, purchase_order_items(*)').eq('id', poId).single();
         if (!data) return null;
-        return { ...data, items: (data as any).purchase_order_items.map((i: any) => ({ productId: i.product_id, quantity: i.quantity, price_per_unit: i.price_per_unit })) };
+        return { ...data, items: (data as any).purchase_order_items.map((i: any) => ({ productId: i.product_id, quantity: i.quantity, pricePerUnit: i.price_per_unit })) };
     },
 
     async getReceivedItemsForPO(poId: string): Promise<Record<string, number>> {
