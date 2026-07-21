@@ -143,15 +143,15 @@ const PurchaseOrderPrintView: React.FC<{
                             <td className="border border-slate-300 p-2 text-sm text-center">{index + 1}</td>
                             <td className="border border-slate-300 p-2 text-sm">{(item as any).product?.name || 'Unknown'}</td>
                             <td className="border border-slate-300 p-2 text-sm text-center">{item.quantity}</td>
-                            <td className="border border-slate-300 p-2 text-sm text-right">{item.pricePerUnit.toLocaleString()}</td>
-                            <td className="border border-slate-300 p-2 text-sm text-right">{(item.quantity * item.pricePerUnit).toLocaleString()}</td>
+                            <td className="border border-slate-300 p-2 text-sm text-right">{(item.pricePerUnit || 0).toLocaleString()}</td>
+                            <td className="border border-slate-300 p-2 text-sm text-right">{((item.quantity || 0) * (item.pricePerUnit || 0)).toLocaleString()}</td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot>
                     <tr>
                         <td colSpan={4} className="border border-slate-300 p-2 text-right font-bold">รวมทั้งสิ้น</td>
-                        <td className="border border-slate-300 p-2 text-right font-bold">{po.totalValue.toLocaleString()}</td>
+                        <td className="border border-slate-300 p-2 text-right font-bold">{(po.totalValue || 0).toLocaleString()}</td>
                     </tr>
                 </tfoot>
             </table>

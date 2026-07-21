@@ -106,7 +106,7 @@ export const RequisitionPrintView: React.FC<{
                                                 {item.status === 'Loaned' && <span className="font-bold text-blue-600 ml-1">(ยืม)</span>}
                                             </td>
                                             <td className="border border-black p-1 text-center text-xs">{product?.unit || '-'}</td>
-                                            <td className="border border-black p-1 text-center text-xs font-bold">{item.quantity.toLocaleString()}</td>
+                                            <td className="border border-black p-1 text-center text-xs font-bold">{(item.quantity || 0).toLocaleString()}</td>
                                             <td className="border border-black p-1 text-center text-xs font-bold text-blue-800">
                                                 {isProcessed ? approvedQty.toLocaleString() : '-'}
                                             </td>
@@ -995,7 +995,7 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
                                                         <span className="inline-flex items-center px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 font-black text-sm">
-                                                            {item.quantity.toLocaleString()}
+                                                            {(item.quantity || 0).toLocaleString()}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-right font-bold text-slate-700 dark:text-slate-200">

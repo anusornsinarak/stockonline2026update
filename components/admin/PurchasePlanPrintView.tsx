@@ -20,8 +20,8 @@ interface PurchasePlanPrintViewProps {
 const PurchasePlanPrintView: React.FC<PurchasePlanPrintViewProps> = ({ planData, fiscalYear, documentSettings }) => {
 
     // Helper functions for formatting
-    const formatCurrency = (val: number) => val === 0 ? '-' : val.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formatNumber = (val: number) => val === 0 ? '-' : val.toLocaleString('th-TH');
+    const formatCurrency = (val: number) => val === 0 ? '-' : (val || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formatNumber = (val: number) => val === 0 ? '-' : (val || 0).toLocaleString('th-TH');
 
     // Group data by product category to render separate tables
     const groupedData = Array.isArray(planData) ? planData.reduce((acc, item) => {
