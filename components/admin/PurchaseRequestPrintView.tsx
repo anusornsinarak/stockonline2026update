@@ -23,7 +23,7 @@ const PurchaseRequestPrintView: React.FC<{
     const totalValue = po.items.reduce((sum, item) => sum + (item.quantity * item.pricePerUnit), 0);
 
     return (
-        <div className="hidden print-only p-8 text-black print-sarabun" style={{ fontSize: '16pt', lineHeight: '1.2' }}>
+        <div className="hidden print-only p-2 text-black print-sarabun" style={{ fontSize: '15pt', lineHeight: '1.1' }}>
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
                 @font-face {
@@ -82,7 +82,7 @@ const PurchaseRequestPrintView: React.FC<{
                 ด้วย กลุ่มงานเภสัชกรรม {documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} มีความประสงค์ขออนุมัติซื้อ เวชภัณฑ์มิใช่ยา จำนวน {po.items.length} รายการ เพื่อใช้ในการให้บริการกับผู้ป่วย โดยขออนุมัติใช้เงินบำรุง{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} ดังนี้
             </p>
 
-            <table className="w-full border-collapse border border-black mt-4" style={{fontSize: '12pt', tableLayout: 'fixed', wordBreak: 'break-word'}}>
+            <table className="w-full border-collapse border border-black mt-2" style={{fontSize: '10pt', tableLayout: 'fixed', wordBreak: 'break-word'}}>
                  <colgroup>
                     <col style={{width: '6%'}} />
                     <col style={{width: '28%'}} />
@@ -132,7 +132,7 @@ const PurchaseRequestPrintView: React.FC<{
                         return (
                             <tr key={item.id || product.id}>
                                 <td className="border border-black p-1 text-center">{index + 1}</td>
-                                <td className="border border-black p-1">{product.name}</td>
+                                <td className="border border-black p-1 text-sm truncate" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{product.name}</td>
                                 <td className="border border-black p-1 text-right">{formatNumber(lastYearUsage)}</td>
                                 <td className="border border-black p-1 text-right">{formatCurrency(annualValue)}</td>
                                 <td className="border border-black p-1 text-center">-</td>

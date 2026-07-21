@@ -28,15 +28,15 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
   return (
     <div
       // FIX: Corrected typo 'fullscreen' to 'fullscreen' to ensure correct styling.
-      className={`fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center ${size === 'fullscreen' ? '' : 'p-4'} ${wrapperClassName || ''}`}
+      className={`fixed print:absolute print:inset-0 inset-0 bg-black bg-opacity-50 print:bg-transparent z-50 flex justify-center items-center print:items-start print:justify-start print:p-0 ${size === 'fullscreen' ? '' : 'p-4'} ${wrapperClassName || ''}`}
       onClick={onClose}
     >
       <div
-        className={`bg-white dark:bg-slate-800 shadow-xl w-full ${sizeClasses[size]} ${size === 'fullscreen' ? 'flex flex-col' : 'rounded-2xl flex flex-col max-h-[95vh] md:max-h-[90vh]'} animate-fade-in`}
+        className={`bg-white dark:bg-slate-800 print:bg-transparent print:dark:bg-transparent shadow-xl print:shadow-none w-full print:w-full print:max-w-none print:max-h-none ${sizeClasses[size]} ${size === 'fullscreen' ? 'flex flex-col' : 'rounded-2xl print:rounded-none flex flex-col max-h-[95vh] md:max-h-[90vh] print:h-auto print:max-h-none'} animate-fade-in print:animate-none print:border-none print:m-0`}
         onClick={(e) => e.stopPropagation()}
         style={{ animationDuration: '0.3s' }}
       >
-        <div className="flex-shrink-0 flex justify-between items-center p-4 border-b dark:border-slate-700">
+        <div className="flex-shrink-0 flex justify-between items-center p-4 border-b dark:border-slate-700 print:hidden">
           <h3 className="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-100 pr-4">{title}</h3>
           <button
             onClick={onClose}
@@ -48,7 +48,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
             </svg>
           </button>
         </div>
-        <div className={`p-4 md:p-6 ${size === 'fullscreen' ? 'flex-grow overflow-y-auto' : 'overflow-y-auto'}`}>
+        <div className={`p-4 md:p-6 print:p-0 print:block ${size === 'fullscreen' ? 'flex-grow overflow-y-auto print:overflow-visible' : 'overflow-y-auto print:overflow-visible'}`}>
             {children}
         </div>
       </div>

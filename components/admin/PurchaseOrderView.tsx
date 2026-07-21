@@ -234,7 +234,13 @@ const PurchaseOrderDetailModal: React.FC<{
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium">เลขที่ PO</label>
-                        <input type="text" value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-2 border rounded" placeholder="เช่น PO-2023-001" />
+                        <div className="flex">
+                            <span className="p-2 border border-r-0 rounded-l bg-slate-50 text-slate-500 whitespace-nowrap">ปจ 0033.201/2/</span>
+                            <input type="text" value={poNumber ? poNumber.replace(/^ปจ 0033\.201\/2\//, '') : ''} onChange={e => {
+                                const val = e.target.value;
+                                setPoNumber(val ? `ปจ 0033.201/2/${val}` : '');
+                            }} className="w-full p-2 border rounded-r focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="เช่น 14402" />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium">สถานะ</label>
