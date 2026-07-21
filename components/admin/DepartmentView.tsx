@@ -2,11 +2,12 @@
 
 
 import React, { useState, useMemo, useEffect, Fragment } from 'react';
-import { SurveyEntry, Product, Department, DepartmentType } from '../../types';
+import { SurveyEntry, Product, Department, DepartmentType, Requisition } from '../../types';
 import * as XLSX from 'xlsx';
 import DownloadIcon from '../icons/DownloadIcon';
 import PrinterIcon from '../icons/PrinterIcon';
 import TableTemplate from './TableTemplate';
+import DepartmentSurveyPrintView from './DepartmentSurveyPrintView';
 // FIX: Changed the import of 'supabaseService' from a default import to a named import to resolve the module resolution error.
 import { supabaseService } from '../../services/supabaseService';
 import PlusIcon from '../icons/PlusIcon';
@@ -25,16 +26,51 @@ interface DepartmentViewProps {
     results: SurveyEntry[];
     products: Product[];
     departments: Department[];
+    requisitions?: Requisition[];
     onDataChange: () => void;
     isReadOnly?: boolean;
     fiscalYear: number;
 }
 
-export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, products, departments, onDataChange, isReadOnly, fiscalYear }) => {
+export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, products, departments, requisitions = [], onDataChange, isReadOnly, fiscalYear }) => {
     const [editedQuantities, setEditedQuantities] = useState<Record<string, Record<string, { quantity: number; price: number }>>>({});
     const [savingDeptId, setSavingDeptId] = useState<string | null>(null);
     const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
     const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
+    const [printingDeptId, setPrintingDeptId] = useState<string | null>(null);
+
+    const getApprovedQuantityInFiscalYear = (deptId: string, productId: string) => {
+        const targetFiscalYearBE = fiscalYear - 1;
+        const yearCE = targetFiscalYearBE - 543;
+        const startDate = new Date(yearCE - 1, 9, 1);
+        const endDate = new Date(yearCE, 8, 30, 23, 59, 59, 999);
+        
+        let total = 0;
+        requisitions.forEach(req => {
+            if (req.departmentId !== deptId) return;
+            if (!['PartiallyApproved', 'Ready', 'Completed'].includes(req.status)) return;
+            const reqDate = req.createdAt ? new Date(req.createdAt) : null;
+            if (!reqDate || reqDate < startDate || reqDate > endDate) return;
+            
+            const item = req.items?.find(i => i.productId === productId);
+            if (item && item.approvedQuantity != null) {
+                total += item.approvedQuantity;
+            }
+        });
+        return total;
+    };
+    
+    useEffect(() => {
+        if (printingDeptId) {
+            const timer = setTimeout(() => window.print(), 100);
+            const afterPrint = () => setPrintingDeptId(null);
+            window.addEventListener('afterprint', afterPrint, {once: true});
+            return () => {
+                clearTimeout(timer);
+                window.removeEventListener('afterprint', afterPrint);
+            };
+        }
+    }, [printingDeptId]);
 
     const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
     
@@ -207,7 +243,8 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
     };
 
     return (
-        <div className="space-y-6">
+        <Fragment>
+        <div className="space-y-6 print:hidden">
             <div className="flex justify-between items-center">
                 <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">ตรวจสอบและแก้ไขผลสำรวจรายหน่วยงาน</h3>
                 <button
@@ -226,16 +263,26 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
 
                     return (
                         <div key={dept.id} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
-                            <button
-                                onClick={() => toggleExpand(dept.id)}
-                                className="w-full flex justify-between items-center p-4 text-left"
-                            >
-                                <h4 className="font-bold text-lg text-slate-800 dark:text-slate-100">{dept.name}</h4>
-                                <div className="flex items-center gap-4">
-                                    <span className="text-sm text-slate-500 dark:text-slate-400">{departmentSurveyItems.length} รายการ</span>
-                                    {isExpanded ? <ChevronUpIcon className="w-5 h-5 text-slate-500" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" />}
-                                </div>
-                            </button>
+                            <div className="w-full flex justify-between items-center p-4">
+                                <button
+                                    onClick={() => toggleExpand(dept.id)}
+                                    className="flex-1 text-left flex justify-between items-center"
+                                >
+                                    <h4 className="font-bold text-lg text-slate-800 dark:text-slate-100">{dept.name}</h4>
+                                    <div className="flex items-center gap-4 pr-4 border-r border-slate-300 dark:border-slate-600">
+                                        <span className="text-sm text-slate-500 dark:text-slate-400">{departmentSurveyItems.length} รายการ</span>
+                                        {isExpanded ? <ChevronUpIcon className="w-5 h-5 text-slate-500" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" />}
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setPrintingDeptId(dept.id)}
+                                    className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition-colors"
+                                    title="พิมพ์แบบสำรวจของหน่วยงานนี้"
+                                >
+                                    <PrinterIcon className="w-4 h-4" />
+                                    <span className="text-sm font-medium">พิมพ์</span>
+                                </button>
+                            </div>
                             {isExpanded && (
                                 <div className="p-4 border-t border-slate-200 dark:border-slate-600 space-y-4 animate-fade-in" style={{animationDuration: '0.3s'}}>
                                     {!isReadOnly && (
@@ -259,7 +306,7 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
                                             )}
                                         </div>
                                     )}
-                                    <TableTemplate headers={['รายการ', 'หน่วย', { name: 'จำนวน', className: 'text-right' }, { name: '', className: 'w-16 text-center' }]}>
+                                    <TableTemplate headers={['รายการ', 'หน่วย', { name: `ใช้แล้วปี ${fiscalYear - 1}`, className: 'text-right' }, { name: 'จำนวนขอเบิก', className: 'text-right' }, { name: '', className: 'w-16 text-center' }]}>
                                         {departmentSurveyItems.length > 0 ? departmentSurveyItems.sort((a,b) => (productMap.get(a[0])?.name || '').localeCompare(productMap.get(b[0])?.name || '', 'th')).map(([productId, surveyItem]) => {
                                             const product = productMap.get(productId);
                                             if (!product) return null;
@@ -267,6 +314,9 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
                                                 <tr key={productId}>
                                                     <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{product.name}</td>
                                                     <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{product.unit}</td>
+                                                    <td className="px-4 py-2 text-right font-medium text-slate-600 dark:text-slate-300">
+                                                        {getApprovedQuantityInFiscalYear(dept.id, productId).toLocaleString('th-TH')}
+                                                    </td>
                                                     <td className="px-4 py-2">
                                                         <input
                                                             type="number"
@@ -308,5 +358,16 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
                 })}
             </div>
         </div>
+        
+        {printingDeptId && (
+            <DepartmentSurveyPrintView
+                department={departments.find(d => d.id === printingDeptId)!}
+                fiscalYear={fiscalYear}
+                items={Object.entries(editedQuantities[printingDeptId] || {})}
+                productMap={productMap}
+                getApprovedQuantityInFiscalYear={getApprovedQuantityInFiscalYear}
+            />
+        )}
+        </Fragment>
     );
 };
