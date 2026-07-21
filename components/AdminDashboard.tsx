@@ -360,7 +360,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
           case 'requisitions': return <ManageRequisitionsView user={user} requisitions={data.requisitions} departments={data.departments} allProducts={data.products} inventory={data.inventory} backorders={derivedBackorders} onDataChange={() => fetchData(true)} documentSettings={documentSettings} onViewPickingList={handleViewPicking} onOpenReturnModal={setReturnModalReq} onOpenCreateForDeptModal={handleOpenCreateForDept} />;
           case 'loanSystem': return <LoanSystemView departments={data.departments} allProducts={data.products} currentUser={user} />;
           case 'loanQRCode': return <LoanQRCodeView />;
-          case 'purchaseOrder': return <PurchaseOrderView user={user} onDataChange={() => fetchData(true)} purchaseOrders={data.purchaseOrders || []} companies={data.companies || []} productSuppliers={data.productSuppliers || []} allProducts={data.products} inventory={data.inventory} documentSettings={documentSettings} onAddProduct={() => {}} onAddCompany={() => {}} />;
+          case 'purchaseOrder': return <PurchaseOrderView user={user} onDataChange={() => fetchData(true)} purchaseOrders={data.purchaseOrders || []} companies={data.companies || []} productSuppliers={data.productSuppliers || []} allProducts={data.products} purchasePlan={data.purchasePlan} viewFiscalYear={viewFiscalYear} inventory={data.inventory} documentSettings={documentSettings} onAddProduct={() => {}} onAddCompany={() => {}} />;
           case 'receipts': return <GoodsReceivingView user={user} allProducts={data.products} onDataChange={() => fetchData(true)} />;
           case 'stockCard': return <StockCardView allProducts={data.products} inventory={data.inventory} goodsReceivedNotes={data.goodsReceivedNotes} purchaseOrders={data.purchaseOrders || []} companies={data.companies || []} onDataChange={() => fetchData(true)} />;
           case 'expiringStock': return <ExpiringStockView expiringStock={data.expiringStock} />;
@@ -447,8 +447,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                 </div>
             ))}
         </nav>
-        <main className="flex-grow min-w-0 bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg min-h-[80vh]">
-            <div className="flex justify-between items-center mb-6 border-b pb-4 dark:border-slate-700">
+        <main className="flex-grow min-w-0 bg-white dark:bg-slate-800 print:bg-transparent print:p-0 print:shadow-none p-6 rounded-xl shadow-lg min-h-[80vh]">
+            <div className="flex justify-between items-center mb-6 border-b pb-4 dark:border-slate-700 print:hidden">
                 <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
                     {Object.values(navGroups).flatMap(g => Object.entries(g.items)).find(([k]) => k === activeTab)?.[1] || 'Dashboard'}
                 </h1>

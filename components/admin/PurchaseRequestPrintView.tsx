@@ -7,7 +7,9 @@ const PurchaseRequestPrintView: React.FC<{
     companyName: string;
     documentSettings: DocumentSettings | null;
     inventoryMap: Map<string, number>;
-}> = ({ po, documentSettings, inventoryMap }) => {
+    purchasePlan?: { productId: string; fiscalYear: number; plannedQuantity: number; }[];
+    viewFiscalYear?: number;
+}> = ({ po, documentSettings, inventoryMap, purchasePlan, viewFiscalYear }) => {
 
     const formatDateThai = (date: Date) => {
         const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -121,7 +123,10 @@ const PurchaseRequestPrintView: React.FC<{
                     {po.items.map((item, index) => {
                         const product = (item as any).product;
                         if (!product) return null;
-                        const lastYearUsage = product.lastYearUsage || 0;
+                        
+                        const planItem = purchasePlan?.find(p => p.productId === product.id && p.fiscalYear === viewFiscalYear);
+                        const lastYearUsage = planItem ? planItem.plannedQuantity : (product.lastYearUsage || 0);
+                        
                         const price = item.pricePerUnit;
                         const annualValue = lastYearUsage * price;
                         const monthlyUsage = lastYearUsage / 12;

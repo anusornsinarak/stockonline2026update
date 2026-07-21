@@ -164,10 +164,12 @@ const PurchaseOrderDetailModal: React.FC<{
     onClose: () => void;
     onDataChange: () => void;
     allProducts: Product[];
+    purchasePlan?: { productId: string; fiscalYear: number; plannedQuantity: number; }[];
+    viewFiscalYear?: number;
     uniqueCommittees: Personnel[];
     inventoryMap: Map<string, number>;
     documentSettings: DocumentSettings | null;
-}> = ({ po, onClose, onDataChange, allProducts, uniqueCommittees, inventoryMap, documentSettings }) => {
+}> = ({ po, onClose, onDataChange, allProducts, purchasePlan, viewFiscalYear, uniqueCommittees, inventoryMap, documentSettings }) => {
     const [committees, setCommittees] = useState<CommitteeMember[]>(po.committees || []);
     const [poNumber, setPoNumber] = useState(po.poNumber || '');
     const [status, setStatus] = useState<POStatus>(po.status);
@@ -228,7 +230,7 @@ const PurchaseOrderDetailModal: React.FC<{
     return (
         <Modal isOpen={true} onClose={onClose} title={`รายละเอียดใบสั่งซื้อ (PO)`} size="3xl">
             {showPrint === 'po' && <PurchaseOrderPrintView po={{...po, items, totalValue, poNumber, status}} companyName={po.companyName || ''} />}
-            {showPrint === 'request' && <PurchaseRequestPrintView po={{...po, items, totalValue, poNumber, status, committees}} companyName={po.companyName || ''} documentSettings={documentSettings} inventoryMap={inventoryMap} />}
+            {showPrint === 'request' && <PurchaseRequestPrintView po={{...po, items, totalValue, poNumber, status, committees}} companyName={po.companyName || ''} documentSettings={documentSettings} inventoryMap={inventoryMap} purchasePlan={purchasePlan} viewFiscalYear={viewFiscalYear} />}
             
             <div className="space-y-6 no-print">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -309,6 +311,8 @@ interface PurchaseOrderViewProps {
     companies: Company[];
     productSuppliers: ProductSupplier[];
     allProducts: Product[];
+    purchasePlan?: { productId: string; fiscalYear: number; plannedQuantity: number; }[];
+    viewFiscalYear?: number;
     inventory: InventoryItem[];
     documentSettings: DocumentSettings | null;
     onAddProduct: () => void;
@@ -316,7 +320,7 @@ interface PurchaseOrderViewProps {
 }
 
 export const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = (props) => {
-    const { user, onDataChange, purchaseOrders, companies, productSuppliers, allProducts, inventory, documentSettings, onAddProduct, onAddCompany } = props;
+    const { user, onDataChange, purchaseOrders, companies, productSuppliers, allProducts, purchasePlan, viewFiscalYear, inventory, documentSettings, onAddProduct, onAddCompany } = props;
     const [selectedPO, setSelectedPO] = useState<PurchaseOrderWithDetails | null>(null);
     const [personnel, setPersonnel] = useState<Personnel[]>([]);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -405,6 +409,8 @@ export const PurchaseOrderView: React.FC<PurchaseOrderViewProps> = (props) => {
                     onClose={() => setSelectedPO(null)}
                     onDataChange={onDataChange}
                     allProducts={allProducts}
+                    purchasePlan={purchasePlan}
+                    viewFiscalYear={viewFiscalYear}
                     uniqueCommittees={personnel}
                     inventoryMap={inventoryMap}
                     documentSettings={documentSettings}
