@@ -2,7 +2,7 @@
 
 
 import React, { useState, useMemo, useEffect, Fragment } from 'react';
-import { SurveyEntry, Product, Department, DepartmentType, Requisition } from '../../types';
+import { SurveyEntry, Product, Department, DepartmentType, Requisition, DocumentSettings } from '../../types';
 import * as XLSX from 'xlsx';
 import DownloadIcon from '../icons/DownloadIcon';
 import PrinterIcon from '../icons/PrinterIcon';
@@ -30,9 +30,10 @@ interface DepartmentViewProps {
     onDataChange: () => void;
     isReadOnly?: boolean;
     fiscalYear: number;
+    documentSettings?: DocumentSettings | null;
 }
 
-export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, products, departments, requisitions = [], onDataChange, isReadOnly, fiscalYear }) => {
+export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, products, departments, requisitions = [], onDataChange, isReadOnly, fiscalYear, documentSettings }) => {
     const [editedQuantities, setEditedQuantities] = useState<Record<string, Record<string, { quantity: number; price: number }>>>({});
     const [savingDeptId, setSavingDeptId] = useState<string | null>(null);
     const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
@@ -366,6 +367,7 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
                 items={Object.entries(editedQuantities[printingDeptId] || {})}
                 productMap={productMap}
                 getApprovedQuantityInFiscalYear={getApprovedQuantityInFiscalYear}
+                documentSettings={documentSettings || null}
             />
         )}
         </Fragment>

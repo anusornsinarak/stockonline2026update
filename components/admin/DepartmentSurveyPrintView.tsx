@@ -1,5 +1,5 @@
 import React from 'react';
-import { Department, Product } from '../../types';
+import { Department, Product, DocumentSettings } from '../../types';
 
 interface DepartmentSurveyPrintViewProps {
     department: Department;
@@ -7,9 +7,10 @@ interface DepartmentSurveyPrintViewProps {
     items: [string, { quantity: number; price: number }][];
     productMap: Map<string, Product>;
     getApprovedQuantityInFiscalYear: (deptId: string, productId: string) => number;
+    documentSettings: DocumentSettings | null;
 }
 
-const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ department, fiscalYear, items, productMap, getApprovedQuantityInFiscalYear }) => {
+const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ department, fiscalYear, items, productMap, getApprovedQuantityInFiscalYear, documentSettings }) => {
     const formatDateThai = (date: Date) => {
         const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
         const day = date.getDate();
@@ -18,54 +19,125 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
         return `${day} ${month} พ.ศ. ${year}`;
     };
 
-    // Use en-US to ensure Arabic numerals are always used across different environments/browsers
+    // Use en-US to ensure Arabic numerals are always used
     const formatNumber = (val: number | undefined | null) => (val || 0) === 0 ? '-' : Math.round(val || 0).toLocaleString('en-US');
     const formatCurrency = (val: number | undefined | null) => (val || 0) === 0 ? '-' : (val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     
     // Sort items by product name
     const sortedItems = [...items].sort((a,b) => (productMap.get(a[0])?.name || '').localeCompare(productMap.get(b[0])?.name || '', 'th'));
 
-    let totalBudget = 0;
+    let totalRequestValue = 0;
 
     return (
-        <div className="hidden print-only p-4 text-black print-sarabun" style={{ fontSize: '12pt', lineHeight: '1.2' }}>
+        <div className="hidden print-only text-black bg-white" style={{ fontFamily: '"TH SarabunPSK", "TH Sarabun New", sans-serif', fontSize: '14pt', lineHeight: '1.2' }}>
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
                 @font-face {
                     font-family: 'TH SarabunPSK';
-                    src: local('TH SarabunPSK'), local('THSarabunPSK');
+                    src: local('TH SarabunPSK'), local('THSarabunPSK'), url('https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts/THSarabunNew.woff2') format('woff2');
+                    font-weight: normal;
+                    font-style: normal;
                 }
-                .print-sarabun {
-                    font-family: 'TH SarabunPSK', 'Sarabun', sans-serif;
+                @font-face {
+                    font-family: 'TH SarabunPSK';
+                    src: local('TH SarabunPSK Bold'), local('THSarabunPSK-Bold'), url('https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts/THSarabunNew-Bold.woff2') format('woff2');
+                    font-weight: bold;
+                    font-style: normal;
+                }
+                @font-face {
+                    font-family: 'TH Sarabun New';
+                    src: url('https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts/THSarabunNew.woff2') format('woff2');
+                    font-weight: normal;
+                    font-style: normal;
+                }
+                @font-face {
+                    font-family: 'TH Sarabun New';
+                    src: url('https://cdn.jsdelivr.net/npm/font-th-sarabun-new@1.0.0/fonts/THSarabunNew-Bold.woff2') format('woff2');
+                    font-weight: bold;
+                    font-style: normal;
                 }
                 @media print {
                     @page {
                         size: A4;
-                        margin: 1cm;
+                        margin: 1.5cm 1.5cm 1.5cm 2.5cm; /* Standard margins */
                     }
                     body {
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
                 }
+                .memo-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 12pt; /* Smaller font for table to fit */
+                }
+                .memo-table th, .memo-table td {
+                    border: 1px solid black;
+                    padding: 4px;
+                    vertical-align: top;
+                }
+                .memo-table th {
+                    text-align: center;
+                    font-weight: bold;
+                }
             `}</style>
             
-            <div className="text-center font-bold text-xl mb-4">
-                รายงานสรุปการสำรวจความต้องการเวชภัณฑ์มิใช่ยา<br/>
-                ประจำปีงบประมาณ {fiscalYear}<br/>
-                หน่วยงาน: {department.name}
+            <div className="flex justify-center mb-6 relative">
+                <div className="absolute left-0 top-0 w-16 h-16">
+                    {documentSettings?.hospitalLogoUrl ? (
+                        <img src={documentSettings.hospitalLogoUrl} alt="โลโก้หน่วยงาน" className="w-full h-full object-contain grayscale" />
+                    ) : (
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Garuda_of_Thailand.svg/100px-Garuda_of_Thailand.svg.png" alt="ตราครุฑ" className="w-full h-full object-contain grayscale" />
+                    )}
+                </div>
+                <div className="text-center font-bold text-[29pt] leading-none mt-4">บันทึกข้อความ</div>
             </div>
 
-            <table className="w-full border-collapse border border-black text-sm mt-4">
+            <div className="flex items-end mb-2">
+                <div className="w-24 font-bold text-xl">ส่วนราชการ</div>
+                <div className="flex-1 ml-2 leading-tight">{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} กลุ่มงานเภสัชกรรม (คลังเวชภัณฑ์) โทร. 0-3728-8169-7 ต่อ 6159</div>
+            </div>
+
+            <div className="flex items-end mb-2">
+                <div className="w-8 font-bold text-xl">ที่</div>
+                <div className="w-48 mx-2 leading-tight">ปจ 0033.201/2/........</div>
+                <div className="w-12 font-bold text-xl">วันที่</div>
+                <div className="flex-1 ml-2 leading-tight">{formatDateThai(new Date())}</div>
+            </div>
+
+            <div className="flex items-end mb-2">
+                <div className="w-12 font-bold text-xl">เรื่อง</div>
+                <div className="flex-1 ml-2 leading-tight">ขออนุมัติจัดซื้อ เวชภัณฑ์มิใช่ยา</div>
+            </div>
+
+            <div className="flex items-end mb-6">
+                <div className="w-12 font-bold text-xl">เรียน</div>
+                <div className="flex-1 ml-2 leading-tight">ผู้อำนวยการ{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'}</div>
+            </div>
+
+            <div className="indent-12 mb-4 text-justify" style={{ textAlignLast: 'left' }}>
+                ด้วย กลุ่มงานเภสัชกรรม {documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} มีความประสงค์ขออนุมัติซื้อ เวชภัณฑ์มิใช่ยา จำนวน {items.length} รายการ เพื่อใช้ในการให้บริการกับผู้ป่วย โดยขออนุมัติใช้เงินบำรุง{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} ดังนี้
+            </div>
+
+            <table className="memo-table mb-4">
                 <thead>
-                    <tr className="text-center font-bold bg-gray-100">
-                        <th className="border border-black p-2 w-12">ลำดับ</th>
-                        <th className="border border-black p-2">รายการคุณลักษณะเฉพาะของเวชภัณฑ์มิใช่ยา</th>
-                        <th className="border border-black p-2 w-24">หน่วย</th>
-                        <th className="border border-black p-2 w-32">จำนวนเบิกใช้จริง<br/>ปีงบฯ {fiscalYear - 1}</th>
-                        <th className="border border-black p-2 w-28">จำนวนขอเบิก<br/>ปีงบฯ {fiscalYear}</th>
-                        <th className="border border-black p-2 w-28">ราคา/หน่วย</th>
-                        <th className="border border-black p-2 w-32">มูลค่ารวม (บาท)</th>
+                    <tr>
+                        <th rowSpan={2} className="w-10">ลำดับ<br/>ที่</th>
+                        <th rowSpan={2}>รายการคุณลักษณะเฉพาะของ<br/>เวชภัณฑ์มิใช่ยา</th>
+                        <th colSpan={2}>ประมาณการใช้ต่อปี</th>
+                        <th colSpan={2}>ปริมาณที่ใช้แล้วในปีงบ</th>
+                        <th colSpan={2}>อัตราการใช้ต่อเดือน</th>
+                        <th rowSpan={2}>คงคลัง</th>
+                        <th colSpan={2}>ปริมาณขอซื้อ</th>
+                    </tr>
+                    <tr>
+                        <th className="w-16">จำนวน</th>
+                        <th className="w-20">มูลค่า</th>
+                        <th className="w-16">จำนวน</th>
+                        <th className="w-20">มูลค่า</th>
+                        <th className="w-16">จำนวน</th>
+                        <th className="w-20">มูลค่า</th>
+                        <th className="w-16">จำนวน</th>
+                        <th className="w-24">มูลค่า</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -73,46 +145,82 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
                         const product = productMap.get(productId);
                         if (!product) return null;
                         
-                        const usage = getApprovedQuantityInFiscalYear(department.id, productId);
                         const price = product.pricePerUnit || 0;
-                        const itemTotal = surveyItem.quantity * price;
-                        totalBudget += itemTotal;
+                        const requestQty = surveyItem.quantity;
+                        const requestValue = requestQty * price;
+                        totalRequestValue += requestValue;
+                        
+                        const usedQty = getApprovedQuantityInFiscalYear(department.id, productId);
+                        const usedValue = usedQty * price;
                         
                         return (
                             <tr key={productId}>
-                                <td className="border border-black p-1 text-center">{index + 1}</td>
-                                <td className="border border-black p-1">{product.name}</td>
-                                <td className="border border-black p-1 text-center">{product.unit}</td>
-                                <td className="border border-black p-1 text-right pr-4">{formatNumber(usage)}</td>
-                                <td className="border border-black p-1 text-right pr-4">{formatNumber(surveyItem.quantity)}</td>
-                                <td className="border border-black p-1 text-right pr-4">{formatCurrency(price)}</td>
-                                <td className="border border-black p-1 text-right pr-4">{formatCurrency(itemTotal)}</td>
+                                <td className="text-center">{index + 1}</td>
+                                <td>{product.name}</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right">{usedQty > 0 ? formatNumber(usedQty) : '-'}</td>
+                                <td className="text-right">{usedValue > 0 ? formatCurrency(usedValue) : '-'}</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right">{requestQty > 0 ? formatNumber(requestQty) : '-'}</td>
+                                <td className="text-right">{requestValue > 0 ? formatCurrency(requestValue) : '-'}</td>
                             </tr>
                         );
                     })}
                 </tbody>
                 <tfoot>
-                    <tr className="font-bold">
-                        <td className="border border-black p-2 text-right pr-4" colSpan={6}>รวมมูลค่าทั้งสิ้น</td>
-                        <td className="border border-black p-2 text-right pr-4">{formatCurrency(totalBudget)}</td>
+                    <tr>
+                        <td colSpan={10} className="text-right font-bold pr-2">รวมมูลค่าทั้งสิ้น</td>
+                        <td className="text-right font-bold">{formatCurrency(totalRequestValue)}</td>
                     </tr>
                 </tfoot>
             </table>
             
-            <div className="mt-16 flex justify-between px-10">
-                <div className="text-center w-1/2 flex flex-col items-center">
-                    <div className="flex flex-col items-start inline-block">
-                        <p>ลงชื่อ..........................................................ผู้เสนอขอ</p>
-                        <p className="mt-2 self-center">(..........................................................)</p>
-                        <p className="self-center">หัวหน้าหน่วยงาน {department.name}</p>
+            <div className="indent-12 mb-16">
+                จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติและมอบพัสดุดำเนินการต่อไป
+            </div>
+
+            <div className="grid grid-cols-2 gap-y-16 gap-x-8 mt-12 text-[14pt]">
+                <div className="text-center">
+                    <div className="flex items-baseline justify-center">
+                        <span>(ลงชื่อ)</span>
+                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                        <span>หัวหน้าหน่วยพัสดุ</span>
                     </div>
+                    <div className="mt-2">({documentSettings?.documentIssuerName || 'นายอนุสรณ์ สินารักษ์'})</div>
+                    <div>{documentSettings?.documentIssuerPosition || 'เจ้าพนักงานเภสัชกรรมชำนาญงาน'}</div>
                 </div>
-                <div className="text-center w-1/2 flex flex-col items-center">
-                    <div className="flex flex-col items-start inline-block">
-                        <p>ลงชื่อ..........................................................ผู้อนุมัติ</p>
-                        <p className="mt-2 self-center">(..........................................................)</p>
-                        <p className="self-center">ผู้อำนวยการ/ผู้มีอำนาจอนุมัติ</p>
+
+                <div className="text-center">
+                    <div className="flex items-baseline justify-center">
+                        <span>(ลงชื่อ)</span>
+                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
                     </div>
+                    <div className="mt-2">({documentSettings?.documentReceiverName || 'นางสาวอุไรวรรณ มาประเสริฐ'})</div>
+                    <div>{documentSettings?.documentReceiverPosition || 'เภสัชกรชำนาญการพิเศษ'}</div>
+                    <div>หัวหน้ากลุ่มงานเภสัชกรรม</div>
+                </div>
+
+                <div className="text-center">
+                    <div className="mb-2 font-bold">เห็นควรอนุมัติ</div>
+                    <div className="flex items-baseline justify-center">
+                        <span>(ลงชื่อ)</span>
+                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                    </div>
+                    <div className="mt-2">({documentSettings?.documentDisbursementApproverName || 'นายธวัช เจียมรัตนจรัส'})</div>
+                    <div className="whitespace-pre-line">{documentSettings?.documentDisbursementApproverPosition || 'นายแพทย์ชำนาญการพิเศษ\nหัวหน้ากลุ่มภารกิจด้านบริการทุติยภูมิและตติยภูมิ'}</div>
+                </div>
+
+                <div className="text-center">
+                    <div className="mb-2 font-bold">อนุมัติ</div>
+                    <div className="flex items-baseline justify-center">
+                        <span>(ลงชื่อ)</span>
+                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                    </div>
+                    <div className="mt-2">({documentSettings?.documentApproverName || 'นายศิวบูลย์ ชัยสงคราม'})</div>
+                    <div>{documentSettings?.documentApproverPosition || 'ผู้อำนวยการโรงพยาบาลกบินทร์บุรี'}</div>
                 </div>
             </div>
         </div>
