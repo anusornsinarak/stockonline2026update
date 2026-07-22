@@ -81,15 +81,15 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
                 }
             `}</style>
             
-            <div className="flex justify-center mb-6 relative">
-                <div className="absolute left-0 top-0 w-16 h-16">
+            <div className="flex justify-center mb-8 relative">
+                <div className="absolute left-0 -top-4 w-20 h-20">
                     {documentSettings?.hospitalLogoUrl ? (
-                        <img src={documentSettings.hospitalLogoUrl} alt="โลโก้หน่วยงาน" className="w-full h-full object-contain grayscale" />
+                        <img src={documentSettings.hospitalLogoUrl} alt="โลโก้หน่วยงาน" className="w-full h-full object-contain grayscale" crossOrigin="anonymous" />
                     ) : (
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Garuda_of_Thailand.svg/100px-Garuda_of_Thailand.svg.png" alt="ตราครุฑ" className="w-full h-full object-contain grayscale" />
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Garuda_of_Thailand.svg/100px-Garuda_of_Thailand.svg.png" alt="ตราครุฑ" className="w-full h-full object-contain grayscale" crossOrigin="anonymous" />
                     )}
                 </div>
-                <div className="text-center font-bold text-[29pt] leading-none mt-4">บันทึกข้อความ</div>
+                <div className="text-center font-bold text-[29pt] leading-none mt-6">บันทึกข้อความ</div>
             </div>
 
             <div className="flex items-end mb-2">
@@ -114,7 +114,7 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
                 <div className="flex-1 ml-2 leading-tight">ผู้อำนวยการ{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'}</div>
             </div>
 
-            <div className="indent-12 mb-4 text-justify" style={{ textAlignLast: 'left' }}>
+            <div className="mb-4" style={{ textIndent: '3rem' }}>
                 ด้วย กลุ่มงานเภสัชกรรม {documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} มีความประสงค์ขออนุมัติซื้อ เวชภัณฑ์มิใช่ยา จำนวน {items.length} รายการ เพื่อใช้ในการให้บริการกับผู้ป่วย โดยขออนุมัติใช้เงินบำรุง{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} ดังนี้
             </div>
 
@@ -178,7 +178,7 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
                 </tfoot>
             </table>
             
-            <div className="indent-12 mb-16">
+            <div className="mb-16" style={{ textIndent: '3rem' }}>
                 จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติและมอบพัสดุดำเนินการต่อไป
             </div>
 
