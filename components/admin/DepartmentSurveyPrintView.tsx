@@ -29,7 +29,7 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
     let totalRequestValue = 0;
 
     return (
-        <div className="hidden print-only text-black bg-white" style={{ fontFamily: '"TH SarabunPSK", "TH Sarabun New", sans-serif', fontSize: '14pt', lineHeight: '1.2' }}>
+        <div className="hidden print-only text-black bg-white" style={{ fontFamily: '"TH SarabunPSK", "TH Sarabun New", sans-serif', fontSize: '12pt', lineHeight: '1.2' }}>
             <style>{`
                 @font-face {
                     font-family: 'TH SarabunPSK';
@@ -83,35 +83,35 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
             
             <div className="flex justify-center mb-8 relative">
                 <div className="absolute left-0 -top-4 w-20 h-20">
-                    {documentSettings?.hospitalLogoUrl ? (
-                        <img src={documentSettings.hospitalLogoUrl} alt="โลโก้หน่วยงาน" className="w-full h-full object-contain grayscale" crossOrigin="anonymous" />
+                    {documentSettings?.hospitalLogoUrl && documentSettings.hospitalLogoUrl.startsWith('http') ? (
+                        <img src={documentSettings.hospitalLogoUrl} alt="โลโก้หน่วยงาน" className="w-full h-full object-contain grayscale" />
                     ) : (
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Garuda_of_Thailand.svg/100px-Garuda_of_Thailand.svg.png" alt="ตราครุฑ" className="w-full h-full object-contain grayscale" crossOrigin="anonymous" />
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/c3/Garuda_of_Thailand.svg" alt="ตราครุฑ" className="w-full h-full object-contain grayscale" />
                     )}
                 </div>
                 <div className="text-center font-bold text-[29pt] leading-none mt-6">บันทึกข้อความ</div>
             </div>
 
-            <div className="flex items-end mb-2">
-                <div className="w-24 font-bold text-xl">ส่วนราชการ</div>
-                <div className="flex-1 ml-2 leading-tight">{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} กลุ่มงานเภสัชกรรม (คลังเวชภัณฑ์) โทร. 0-3728-8169-7 ต่อ 6159</div>
+            <div className="flex items-baseline mb-1">
+                <div className="font-bold text-[16pt] mr-4 whitespace-nowrap">ส่วนราชการ</div>
+                <div className="flex-1 leading-tight">{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'} กลุ่มงานเภสัชกรรม (คลังเวชภัณฑ์) โทร. 0-3728-8169-7 ต่อ 6159</div>
             </div>
 
-            <div className="flex items-end mb-2">
-                <div className="w-8 font-bold text-xl">ที่</div>
-                <div className="w-48 mx-2 leading-tight">ปจ 0033.201/2/........</div>
-                <div className="w-12 font-bold text-xl">วันที่</div>
-                <div className="flex-1 ml-2 leading-tight">{formatDateThai(new Date())}</div>
+            <div className="flex items-baseline mb-1">
+                <div className="font-bold text-[16pt] mr-4 whitespace-nowrap">ที่</div>
+                <div className="w-64 leading-tight">ปจ 0033.201/2/........</div>
+                <div className="font-bold text-[16pt] mr-4 whitespace-nowrap">วันที่</div>
+                <div className="flex-1 leading-tight">{formatDateThai(new Date())}</div>
             </div>
 
-            <div className="flex items-end mb-2">
-                <div className="w-12 font-bold text-xl">เรื่อง</div>
-                <div className="flex-1 ml-2 leading-tight">ขออนุมัติจัดซื้อ เวชภัณฑ์มิใช่ยา</div>
+            <div className="flex items-baseline mb-1">
+                <div className="font-bold text-[16pt] mr-4 whitespace-nowrap">เรื่อง</div>
+                <div className="flex-1 leading-tight">ขออนุมัติจัดซื้อ เวชภัณฑ์มิใช่ยา</div>
             </div>
 
-            <div className="flex items-end mb-6">
-                <div className="w-12 font-bold text-xl">เรียน</div>
-                <div className="flex-1 ml-2 leading-tight">ผู้อำนวยการ{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'}</div>
+            <div className="flex items-baseline mb-6">
+                <div className="font-bold text-[16pt] mr-4 whitespace-nowrap">เรียน</div>
+                <div className="flex-1 leading-tight">ผู้อำนวยการ{documentSettings?.hospitalName || 'โรงพยาบาลกบินทร์บุรี'}</div>
             </div>
 
             <div className="mb-4" style={{ textIndent: '3rem' }}>
@@ -182,42 +182,42 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
                 จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติและมอบพัสดุดำเนินการต่อไป
             </div>
 
-            <div className="grid grid-cols-2 gap-y-16 gap-x-8 mt-12 text-[14pt]">
-                <div className="text-center">
-                    <div className="flex items-baseline justify-center">
+            <div className="grid grid-cols-2 gap-y-12 gap-x-8 mt-12 text-[12pt]">
+                <div className="text-center flex flex-col items-center">
+                    <div className="flex items-baseline justify-center whitespace-nowrap">
                         <span>(ลงชื่อ)</span>
-                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                        <span className="w-40 border-b border-dotted border-black/80 mx-2"></span>
                         <span>หัวหน้าหน่วยพัสดุ</span>
                     </div>
                     <div className="mt-2">({documentSettings?.documentIssuerName || 'นายอนุสรณ์ สินารักษ์'})</div>
                     <div>{documentSettings?.documentIssuerPosition || 'เจ้าพนักงานเภสัชกรรมชำนาญงาน'}</div>
                 </div>
 
-                <div className="text-center">
-                    <div className="flex items-baseline justify-center">
+                <div className="text-center flex flex-col items-center">
+                    <div className="flex items-baseline justify-center whitespace-nowrap">
                         <span>(ลงชื่อ)</span>
-                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                        <span className="w-40 border-b border-dotted border-black/80 mx-2"></span>
                     </div>
                     <div className="mt-2">({documentSettings?.documentReceiverName || 'นางสาวอุไรวรรณ มาประเสริฐ'})</div>
                     <div>{documentSettings?.documentReceiverPosition || 'เภสัชกรชำนาญการพิเศษ'}</div>
                     <div>หัวหน้ากลุ่มงานเภสัชกรรม</div>
                 </div>
 
-                <div className="text-center">
-                    <div className="mb-2 font-bold">เห็นควรอนุมัติ</div>
-                    <div className="flex items-baseline justify-center">
+                <div className="text-center flex flex-col items-center">
+                    <div className="mb-2 font-bold text-[16pt]">เห็นควรอนุมัติ</div>
+                    <div className="flex items-baseline justify-center whitespace-nowrap">
                         <span>(ลงชื่อ)</span>
-                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                        <span className="w-40 border-b border-dotted border-black/80 mx-2"></span>
                     </div>
                     <div className="mt-2">({documentSettings?.documentDisbursementApproverName || 'นายธวัช เจียมรัตนจรัส'})</div>
-                    <div className="whitespace-pre-line">{documentSettings?.documentDisbursementApproverPosition || 'นายแพทย์ชำนาญการพิเศษ\nหัวหน้ากลุ่มภารกิจด้านบริการทุติยภูมิและตติยภูมิ'}</div>
+                    <div className="whitespace-pre-line leading-tight">{documentSettings?.documentDisbursementApproverPosition || 'นายแพทย์ชำนาญการพิเศษ\nหัวหน้ากลุ่มภารกิจด้านบริการทุติยภูมิและตติยภูมิ'}</div>
                 </div>
 
-                <div className="text-center">
-                    <div className="mb-2 font-bold">อนุมัติ</div>
-                    <div className="flex items-baseline justify-center">
+                <div className="text-center flex flex-col items-center">
+                    <div className="mb-2 font-bold text-[16pt]">อนุมัติ</div>
+                    <div className="flex items-baseline justify-center whitespace-nowrap">
                         <span>(ลงชื่อ)</span>
-                        <span className="w-48 border-b border-dotted border-black/80 mx-2"></span>
+                        <span className="w-40 border-b border-dotted border-black/80 mx-2"></span>
                     </div>
                     <div className="mt-2">({documentSettings?.documentApproverName || 'นายศิวบูลย์ ชัยสงคราม'})</div>
                     <div>{documentSettings?.documentApproverPosition || 'ผู้อำนวยการโรงพยาบาลกบินทร์บุรี'}</div>

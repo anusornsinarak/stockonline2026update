@@ -147,10 +147,11 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
                 
                 const reducedProducts: string[] = [];
                 Object.entries(quantitiesToSave).forEach(([productId, data]) => {
+                    const typedData = data as { quantity: number; price: number };
                     const oldQuantity = (originalQuantities[productId] as any)?.quantity || 0;
-                    if (data.quantity < oldQuantity) {
+                    if (typedData.quantity < oldQuantity) {
                         const productName = productMap.get(productId)?.name || 'ไม่ทราบชื่อ';
-                        reducedProducts.push(`${productName} (จาก ${oldQuantity} เหลือ ${data.quantity})`);
+                        reducedProducts.push(`${productName} (จาก ${oldQuantity} เหลือ ${typedData.quantity})`);
                     }
                 });
 
