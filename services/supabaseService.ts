@@ -534,8 +534,25 @@ export const supabaseService = {
         return reqId;
     },
 
+    async notifyDepartmentStatusChange(reqId: string, status: RequisitionStatus, rejectionReason?: string) {
+        try {
+            const { data: req } = await supabase.from('requisitions').select('department_id, requisition_number').eq('id', reqId).single();
+            if (req) {
+                const statusText = requisitionStatusMap[status]?.text || status;
+                let msg = `🔔 สถานะใบเบิก #${req.requisition_number || reqId.substring(0,8)}\n✨ "${statusText}" ✨\n📦 แจ้งจากทางคลังเวชภัณฑ์มิใช่ยา 🏥`;
+                if (rejectionReason && (status === 'Rejected' || status === 'Cancelled')) {
+                    msg += `\n⚠️ เหตุผล: ${rejectionReason}`;
+                }
+                await this.notifyDepartmentUsers(req.department_id, msg);
+            }
+        } catch(e) {
+            console.error('Failed to send status change notification', e);
+        }
+    },
+
     async updateRequisitionStatus(id: string, status: RequisitionStatus) {
         await supabase.rpc('update_requisition_status', { p_requisition_id: id, p_new_status: status });
+        await this.notifyDepartmentStatusChange(id, status);
     },
 
     async forceUpdateRequisitionStatus(id: string, status: RequisitionStatus, reason?: string | null) {
@@ -660,6 +677,7 @@ export const supabaseService = {
             updateData.requisition_number = originalReq.requisition_number;
         }
         await supabase.from('requisitions').update(updateData).eq('id', reqId);
+        await this.notifyDepartmentStatusChange(reqId, status);
 
         // FIX: The RPC might overwrite the original requested quantity with the approved quantity,
         // or it might delete and recreate items (changing their IDs).

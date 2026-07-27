@@ -144,7 +144,7 @@ export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
                     />
                 );
             case 'survey':
-                return <SurveyForm department={department} isSurveyOpen={isSurveyOpen} title={surveyTitle} purchasePlan={purchasePlan} allSurveyResults={allSurveyResults} />;
+                return <SurveyForm department={department} isSurveyOpen={isSurveyOpen} title={surveyTitle} purchasePlan={purchasePlan} allSurveyResults={allSurveyResults} onSurveySubmitted={() => setActiveTab('requisition')} />;
             case 'inventory':
                 return <DepartmentInventoryView department={department} />;
             case 'usage_scanner':

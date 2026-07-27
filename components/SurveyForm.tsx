@@ -15,6 +15,7 @@ interface SurveyFormProps {
   title: string;
   purchasePlan: PurchasePlanItem[];
   allSurveyResults: SurveyEntry[];
+  onSurveySubmitted?: () => void;
 }
 
 const exportToExcel = (data: any[], fileName: string, sheetName: string = "Sheet1") => {
@@ -28,7 +29,7 @@ const exportToExcel = (data: any[], fileName: string, sheetName: string = "Sheet
     XLSX.writeFile(workbook, `${fileName}.xlsx`);
 };
 
-const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title, purchasePlan, allSurveyResults }) => {
+const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title, purchasePlan, allSurveyResults, onSurveySubmitted }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, { quantity: number; price: number }>>({});
@@ -189,7 +190,13 @@ const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title
     try {
       await supabaseService.submitSurvey(department.id, fySettings.fy_survey_year, quantitiesForSubmit);
       setSubmissionStatus('success');
-      setTimeout(() => setSubmissionStatus('idle'), 3000);
+      alert('ส่งแบบสำรวจประจำปีเสร็จแล้ว');
+      setTimeout(() => {
+          setSubmissionStatus('idle');
+          if (onSurveySubmitted) {
+              onSurveySubmitted();
+          }
+      }, 500);
     } catch (error) {
       console.error("Failed to submit survey:", error);
       setSubmissionStatus('error');
