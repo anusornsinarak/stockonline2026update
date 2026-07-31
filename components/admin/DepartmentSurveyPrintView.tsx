@@ -81,15 +81,13 @@ const DepartmentSurveyPrintView: React.FC<DepartmentSurveyPrintViewProps> = ({ d
                 }
             `}</style>
             
-            <div className="flex justify-center mb-8 relative">
-                <div className="absolute left-0 -top-4 w-20 h-20">
-                    {documentSettings?.hospitalLogoUrl && documentSettings.hospitalLogoUrl.startsWith('http') ? (
-                        <img src={documentSettings.hospitalLogoUrl} alt="โลโก้หน่วยงาน" className="w-full h-full object-contain grayscale" />
-                    ) : (
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/c3/Garuda_of_Thailand.svg" alt="ตราครุฑ" className="w-full h-full object-contain grayscale" />
-                    )}
-                </div>
-                <div className="text-center font-bold text-[29pt] leading-none mt-6">บันทึกข้อความ</div>
+            <div className="flex items-center mb-6">
+                 <div className="w-24 flex-shrink-0">
+                    <img src={documentSettings?.hospitalLogoUrl || "https://upload.wikimedia.org/wikipedia/commons/c/c3/Garuda_of_Thailand.svg"} alt="โลโก้หน่วยงาน" className="h-20 object-contain mx-auto grayscale" />
+                 </div>
+                 <div className="flex-grow flex justify-center -ml-24">
+                     <h1 className="font-bold text-center" style={{fontSize: '29pt'}}>บันทึกข้อความ</h1>
+                 </div>
             </div>
 
             <div className="flex items-baseline mb-1">
