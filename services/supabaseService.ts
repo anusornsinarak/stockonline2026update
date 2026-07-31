@@ -687,7 +687,8 @@ export const supabaseService = {
             const originalQty = originalQtyMap.has(item.productId) ? originalQtyMap.get(item.productId) : item.quantity;
             await supabase.from('requisition_items').update({ 
                 quantity: originalQty,
-                status: item.status 
+                status: item.status,
+                approved_quantity: item.approvedQuantity
             } as any)
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
@@ -741,7 +742,8 @@ export const supabaseService = {
             const originalQty = originalQtyMap.has(item.productId) ? originalQtyMap.get(item.productId) : item.quantity;
             await supabase.from('requisition_items').update({ 
                 quantity: originalQty,
-                status: item.status 
+                status: item.status,
+                approved_quantity: item.approvedQuantity
             } as any)
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);

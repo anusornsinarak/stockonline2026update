@@ -149,7 +149,7 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
                 .flatMap(r => {
                     const departmentName = depts.find(d => d.id === r.departmentId)?.name;
                     return r.items?.filter(i => i.status === 'Loaned').map(i => {
-                        const loanedQty = i.approvedQuantity !== null && i.approvedQuantity !== undefined ? i.approvedQuantity : i.quantity;
+                        const loanedQty = i.approvedQuantity || i.quantity;
                         if (loanedQty <= 0) return null;
                         const loanItem: LoanItem = {
                             id: i.id!,

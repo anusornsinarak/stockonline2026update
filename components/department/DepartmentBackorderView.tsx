@@ -54,7 +54,7 @@ export const DepartmentBackorderView: React.FC<{ department: Department }> = ({ 
 
                         // Loan logic without date filter
                         if (item.status === 'Loaned') {
-                            const loanedQty = item.approvedQuantity || 0;
+                            const loanedQty = item.approvedQuantity || item.quantity;
                             if (loanedQty > 0) {
                                 derivedLoansFromReqs.push({
                                     id: item.id!,
