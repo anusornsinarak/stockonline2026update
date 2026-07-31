@@ -48,7 +48,7 @@ const PurchaseRequestPrintView: React.FC<{
             
             <div className="flex items-center mb-6">
                  <div className="w-24 flex-shrink-0">
-                     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Garuda_emblem_of_Thailand.svg/200px-Garuda_emblem_of_Thailand.svg.png" alt="Garuda" className="h-20 object-contain mx-auto" />
+                     <img src={documentSettings?.hospitalLogoUrl || "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Garuda_emblem_of_Thailand.svg/200px-Garuda_emblem_of_Thailand.svg.png"} alt="Logo" className="h-20 object-contain mx-auto" />
                  </div>
                  <div className="flex-grow flex justify-center -ml-24">
                      <h1 className="font-bold text-center" style={{fontSize: '29pt'}}>บันทึกข้อความ</h1>
