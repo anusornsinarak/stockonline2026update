@@ -84,9 +84,13 @@ const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title
         setPrevYearSurvey(prevQuantities);
       }
       
-      // If we have current survey data, use it. 
+      // If we have current survey data, the user has already submitted for this year.
       if (surveyData?.quantities) {
-        setQuantities(surveyData.quantities);
+        alert('ส่งแบบสำรวจประจำปีเสร็จแล้ว');
+        if (onSurveySubmitted) {
+            onSurveySubmitted();
+        }
+        return;
       }
       
       // Auto-add items that had usage last year or were in the previous survey but aren't in fetchedProducts

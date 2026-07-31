@@ -665,7 +665,8 @@ export const supabaseService = {
             .eq('id', reqId)
             .single();
 
-        await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: 'Simple Approval' });
+        const { error: rpcErr } = await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: 'Simple Approval' });
+        if (rpcErr) throw rpcErr;
         
         // Update requisition status and submitted_at (only if not already set)
         const updateData: any = { status: status };
@@ -685,13 +686,14 @@ export const supabaseService = {
         // We update by requisition_id and product_id to be safe.
         for (const item of items) {
             const originalQty = originalQtyMap.has(item.productId) ? originalQtyMap.get(item.productId) : item.quantity;
-            await supabase.from('requisition_items').update({ 
+            const { error: updErr } = await supabase.from('requisition_items').update({ 
                 quantity: originalQty,
                 status: item.status,
                 approved_quantity: item.approvedQuantity
             } as any)
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
+            if (updErr) throw updErr;
         }
 
         await this.handleRejectReasonsAndLocks(reqId, items);
@@ -718,7 +720,8 @@ export const supabaseService = {
             .eq('id', reqId)
             .single();
 
-        await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: editReason });
+        const { error: rpcErr } = await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: editReason });
+        if (rpcErr) throw rpcErr;
         
         const updateData: any = {};
         // Set submitted_at to current date only if not already set
@@ -740,13 +743,14 @@ export const supabaseService = {
         // We update by requisition_id and product_id to be safe.
         for (const item of items) {
             const originalQty = originalQtyMap.has(item.productId) ? originalQtyMap.get(item.productId) : item.quantity;
-            await supabase.from('requisition_items').update({ 
+            const { error: updErr } = await supabase.from('requisition_items').update({ 
                 quantity: originalQty,
                 status: item.status,
                 approved_quantity: item.approvedQuantity
             } as any)
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
+            if (updErr) throw updErr;
         }
 
         await this.handleRejectReasonsAndLocks(reqId, items);
@@ -766,7 +770,7 @@ export const supabaseService = {
 
         for (const item of rejectedItems) {
             if (item.rejectReason) {
-                await supabase.from('requisition_items').update({ reject_reason: item.rejectReason } as any).eq('id', item.id!);
+                const { error: updErr } = await supabase.from('requisition_items').update({ reject_reason: item.rejectReason } as any).eq('id', item.id!);
             }
             if (item.lockProduct) {
                 const { data: existing } = await supabase.from('product_assignments')
@@ -1616,7 +1620,7 @@ export const supabaseService = {
 
     async markLoansAsFulfilled(directLoanIds: number[], derivedLoanIds: number[]) {
         if (directLoanIds.length > 0) await supabase.from('loan_items').update({ status: 'Fulfilled', fulfilled_at: new Date().toISOString() } as any).in('id', directLoanIds);
-        if (derivedLoanIds.length > 0) await supabase.from('requisition_items').update({ status: 'LoanFulfilled' } as any).in('id', derivedLoanIds);
+        if (derivedLoanIds.length > 0) await await supabase.from('requisition_items').update({ status: 'LoanFulfilled' } as any).in('id', derivedLoanIds);
     },
 
     async createReturnSlip(req: Requisition, items: any[], reason: string) {
@@ -1742,7 +1746,8 @@ export const supabaseService = {
                     product:products(*)
                 )
             `)
-            .not('status', 'eq', 'Draft'); // Only submitted/processed requisitions
+            .not('status', 'eq', 'Draft')
+            .order('created_at', { ascending: false }); // Only submitted/processed requisitions
         
         if (reqError) throw reqError;
 
