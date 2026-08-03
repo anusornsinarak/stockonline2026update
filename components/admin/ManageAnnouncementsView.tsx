@@ -111,7 +111,7 @@ const ManageAnnouncementsView: React.FC = () => {
     };
 
     const handleSetActive = async (item: AnnouncementItem) => {
-        const newConfig = { id: item.id, content: item.content, enabled: true };
+        const newConfig = { ...activeConfig, id: item.id, content: item.content, enabled: true };
         setActiveConfig(newConfig);
         await supabaseService.saveAnnouncementSettings(newConfig as any);
         setStatusMessage({ type: 'success', text: `เริ่มแสดงประกาศ: ${item.title}` });
@@ -133,7 +133,7 @@ const ManageAnnouncementsView: React.FC = () => {
         const newLibrary = library.filter(i => i.id !== id);
         handleSaveLibrary(newLibrary);
         if (activeConfig.id === id) {
-            const resetActive = { id: null, content: '', enabled: false };
+            const resetActive = { ...activeConfig, id: null, content: '', enabled: false };
             setActiveConfig(resetActive);
             supabaseService.saveAnnouncementSettings(resetActive as any);
         }
