@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Requisition, Product, RequisitionItem, RequisitionStatus, RequisitionItemStatus, requisitionItemStatusMap, DocumentSettings, requisitionStatusMap } from '../types';
+import { safeGetStorage, safeSetStorage, safeRemoveStorage } from '../utils';
 import { supabaseService } from '../services/supabaseService';
 import ArrowUturnLeftIcon from './icons/ArrowUturnLeftIcon';
 import PrinterIcon from './icons/PrinterIcon';
@@ -101,7 +102,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
             };
         });
         
-        const draftJson = localStorage.getItem(`picking_draft_${requisition.id}`);
+        const draftJson = safeGetStorage(`picking_draft_${requisition.id}`);
         if (draftJson && !isPreview) {
             try {
                 const draftItems = JSON.parse(draftJson);
@@ -134,7 +135,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                     return; 
                 }
             } catch (e) {
-                localStorage.removeItem(`picking_draft_${requisition.id}`);
+                safeRemoveStorage(`picking_draft_${requisition.id}`);
             }
         }
 
@@ -146,7 +147,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
         if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current);
         draftSaveTimeout.current = window.setTimeout(() => {
             if (items.length > 0) {
-                localStorage.setItem(`picking_draft_${requisition.id}`, JSON.stringify(items));
+                safeSetStorage(`picking_draft_${requisition.id}`, JSON.stringify(items));
             }
         }, 1000);
         return () => { if (draftSaveTimeout.current) clearTimeout(draftSaveTimeout.current); };
@@ -233,7 +234,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
             });
 
             await onProcessSimple(finalItems);
-            localStorage.removeItem(`picking_draft_${requisition.id}`);
+            safeRemoveStorage(`picking_draft_${requisition.id}`);
             
             // Auto-trigger print after save success
             const itemsWithProduct = finalItems.map(item => ({

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabaseService } from '../services/supabaseService';
 import { useAuth } from '../contexts/AuthContext';
+import { safeGetStorage, safeRemoveStorage } from '../utils';
 
 const LineCallback: React.FC = () => {
     const navigate = useNavigate();
@@ -30,7 +31,7 @@ const LineCallback: React.FC = () => {
                 return;
             }
 
-            const savedState = localStorage.getItem('line_oauth_state');
+            const savedState = safeGetStorage('line_oauth_state');
             if (!state || state !== savedState) {
                 setError('ข้อมูล State ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
                 setTimeout(() => navigate('/settings'), 3000);
@@ -94,7 +95,7 @@ const LineCallback: React.FC = () => {
                 setError(`เกิดข้อผิดพลาด: ${err instanceof Error ? err.message : String(err)}`);
                 setTimeout(() => navigate('/settings'), 3000);
             } finally {
-                localStorage.removeItem('line_oauth_state');
+                safeRemoveStorage('line_oauth_state');
             }
         };
 

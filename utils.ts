@@ -26,3 +26,23 @@ export const getThaiYearMonthPrefix = (date: Date): string => {
 export const formatRunningNumber = (num: number): string => {
   return String(num).padStart(3, '0');
 };
+
+export const safeGetStorage = (key: string): string | null => {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        return null;
+    }
+};
+
+export const safeSetStorage = (key: string, value: string): void => {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {}
+};
+
+export const safeRemoveStorage = (key: string): void => {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {}
+};

@@ -15,7 +15,7 @@ import { LoanSystemView } from './components/admin/LoanSystemView';
 import LineContact from './components/LineContact';
 import BottomNavBar from './components/BottomNavBar';
 import LoadingScreen from './components/LoadingScreen';
-import { getFiscalYearBE } from './utils';
+import { getFiscalYearBE, safeGetStorage, safeSetStorage } from './utils';
 import SatisfactionSurveyModal from './components/SatisfactionSurveyModal';
 import LineCallback from './components/LineCallback';
 import { AuthContext } from './contexts/AuthContext';
@@ -195,7 +195,7 @@ const App: React.FC = () => {
   const handleThemeToggle = () => {
     document.documentElement.classList.toggle('dark');
     const isDark = document.documentElement.classList.contains('dark');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    safeSetStorage('theme', isDark ? 'dark' : 'light');
     window.dispatchEvent(new Event('themeChanged'));
   };
 
@@ -303,7 +303,7 @@ const App: React.FC = () => {
                   onNotificationAction={() => setAlertMessage(null)}
                   showBackButton={activeView.type !== 'dashboard'}
                   onBack={() => setActiveView({ type: 'dashboard' })}
-                  theme={localStorage.getItem('theme') as 'light' | 'dark' || 'light'}
+                  theme={safeGetStorage('theme') as 'light' | 'dark' || 'light'}
                   onToggleTheme={handleThemeToggle}
                 />
                 {alertMessage && <AlertBanner message={alertMessage} onMute={() => setAlertMessage(null)} />}

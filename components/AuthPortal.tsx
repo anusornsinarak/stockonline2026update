@@ -7,6 +7,7 @@ import PublicProductScannerModal from './PublicProductScannerModal';
 import PublicProductSearchModal from './PublicProductSearchModal';
 import { supabaseService } from '../services/supabaseService';
 import SpeakerWaveIcon from './icons/SpeakerWaveIcon';
+import { safeGetStorage, safeSetStorage } from '../utils';
 
 interface AuthPortalProps {
     appTitle: string;
@@ -27,7 +28,7 @@ const AuthPortal: React.FC<AuthPortalProps> = ({ appTitle, appSubtitle }) => {
                 if (settings && settings.enabled) {
                     // ตรวจสอบว่าวันนี้ผู้ใช้สั่งปิดประกาศไปแล้วหรือยัง
                     const todayStr = new Date().toISOString().split('T')[0];
-                    const lastDismissedDate = localStorage.getItem('announcement_dismissed_date');
+                    const lastDismissedDate = safeGetStorage('announcement_dismissed_date');
                     
                     if (lastDismissedDate !== todayStr) {
                         setAnnouncement(settings);
@@ -44,7 +45,7 @@ const AuthPortal: React.FC<AuthPortalProps> = ({ appTitle, appSubtitle }) => {
     const handleDismissAnnouncement = (dontShowAgain: boolean) => {
         if (dontShowAgain) {
             const todayStr = new Date().toISOString().split('T')[0];
-            localStorage.setItem('announcement_dismissed_date', todayStr);
+            safeSetStorage('announcement_dismissed_date', todayStr);
         }
         setShowAnnouncementModal(false);
     };

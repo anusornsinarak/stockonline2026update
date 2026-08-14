@@ -37,8 +37,15 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
     const [manualStockOverrides, setManualStockOverrides] = useState<Record<string, number>>({});
     const [isSaving, setIsSaving] = useState(false);
     const [isManuallyLocked, setIsManuallyLocked] = useState(true);
+    const [planningBudget, setPlanningBudget] = useState<number>(budget || 0);
 
     const inventoryMap = useMemo(() => new Map(inventory.map(i => [i.productId, i.quantity])), [inventory]);
+
+    useEffect(() => {
+        if (budget !== null && budget !== undefined) {
+            setPlanningBudget(budget);
+        }
+    }, [budget]);
 
     const isPlanLocked = useMemo(() => {
         const planStartDate = new Date(selectedFiscalYear - 544, 9, 1); 
@@ -116,7 +123,8 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             const surveyData = surveyMap.get(product.id);
             const totalQuantity = surveyData ? surveyData.totalQuantity : 0;
             const plannedQty = parseInt(plannedManualQuantities[product.id] || '0', 10) || 0;
-            const realStock = inventoryMap.get(product.id) || 0; const currentStock = manualStockOverrides[product.id] !== undefined ? manualStockOverrides[product.id] : realStock;
+            const realStock = inventoryMap.get(product.id) || 0;
+            const currentStock = manualStockOverrides[product.id] !== undefined ? manualStockOverrides[product.id] : realStock;
             const price = product.pricePerUnit || 0;
             const plannedValue = plannedQty * price;
             const usageHistory = usageHistoryByProduct[product.id] || {};
@@ -124,6 +132,29 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             return { product, totalQuantity, plannedQty, currentStock, realStock, plannedValue, usageHistory };
         }).sort((a,b) => a.product.name.localeCompare(b.product.name, 'th'));
     }, [products, aggregatedSurveyData, plannedManualQuantities, manualStockOverrides, inventoryMap, productUsageHistory]);
+
+    const totalPlannedValue = useMemo(() => {
+        return planData.reduce((sum, item) => sum + item.plannedValue, 0);
+    }, [planData]);
+
+    const handleAutoCalculateFromSurvey = () => {
+        if (!window.confirm('ยืนยันการคำนวณจำนวนตามแผนจากยอดสำรวจ? (ข้อมูลที่กรอกไว้จะถูกแทนที่)')) return;
+        const newQtys: Record<string, string> = {};
+        planData.forEach(item => {
+            newQtys[item.product.id] = String(item.totalQuantity);
+        });
+        setPlannedManualQuantities(newQtys);
+    };
+
+    const handleAutoCalculateFromUsage = () => {
+        if (!window.confirm(`ยืนยันการคำนวณจำนวนตามแผนจากการใช้จริงในปี ${selectedFiscalYear - 1}? (ข้อมูลที่กรอกไว้จะถูกแทนที่)`)) return;
+        const newQtys: Record<string, string> = {};
+        planData.forEach(item => {
+            const usageLastYear = item.usageHistory[selectedFiscalYear - 1] || 0;
+            newQtys[item.product.id] = String(usageLastYear);
+        });
+        setPlannedManualQuantities(newQtys);
+    };
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -151,6 +182,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             <td className="px-6 py-2 text-sm font-medium text-slate-900 dark:text-slate-100">{item.product.name}</td>
             <td className="px-6 py-2 text-sm text-right">{item.product.pricePerUnit?.toLocaleString()}</td>
             <td className="px-6 py-2 text-sm text-right">{item.totalQuantity.toLocaleString()}</td>
+            <td className="px-6 py-2 text-sm text-right font-medium text-amber-700 dark:text-amber-500">{(item.usageHistory[selectedFiscalYear - 1] || 0).toLocaleString()}</td>
             <td className="px-6 py-2 w-32">
                 <input
                     type="number"
@@ -175,17 +207,61 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h3 className="text-xl font-bold">แผนการจัดซื้อปีงบประมาณ {selectedFiscalYear}</h3>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     {!isReadOnly && (
-                        <button onClick={handleSave} disabled={isSaving} className="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 disabled:bg-slate-400">
-                            บันทึกแผน
-                        </button>
+                        <>
+                            <button onClick={handleAutoCalculateFromUsage} className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 font-medium py-2 px-4 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-800/50 transition-colors shadow-sm">
+                                ดึงยอดใช้จริงปีก่อน
+                            </button>
+                            <button onClick={handleAutoCalculateFromSurvey} className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 font-medium py-2 px-4 rounded-lg hover:bg-emerald-200 dark:hover:bg-emerald-800/50 transition-colors shadow-sm">
+                                ดึงยอดสำรวจ
+                            </button>
+                            <button onClick={handleSave} disabled={isSaving} className="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 disabled:bg-slate-400 shadow-sm">
+                                บันทึกแผน
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
-            <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'คงคลัง', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-center">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">งบประมาณจัดซื้อรวม (ถ้ามี)</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-slate-500">฿</span>
+                            <input 
+                                type="number" 
+                                value={planningBudget}
+                                onChange={(e) => setPlanningBudget(Number(e.target.value) || 0)}
+                                className="w-32 text-right p-1 text-sm border rounded bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-between items-end">
+                        <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">มูลค่าตามแผนรวม</span>
+                        <span className={`text-2xl font-bold ${totalPlannedValue > planningBudget && planningBudget > 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'}`}>
+                            {totalPlannedValue.toLocaleString()} <span className="text-sm font-normal text-slate-500">บาท</span>
+                        </span>
+                    </div>
+                    {planningBudget > 0 && (
+                        <div className="mt-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden flex">
+                            <div className={`h-2.5 rounded-full ${totalPlannedValue > planningBudget ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${Math.min(100, (totalPlannedValue / planningBudget) * 100)}%` }}></div>
+                        </div>
+                    )}
+                </div>
+                
+                <div className="bg-sky-50 dark:bg-sky-900/20 p-4 rounded-xl border border-sky-100 dark:border-sky-800 flex flex-col justify-center">
+                     <p className="text-sm text-sky-800 dark:text-sky-200 leading-relaxed">
+                         <strong className="block mb-1">💡 เคล็ดลับการวางแผน:</strong>
+                         คุณสามารถนำยอดสำรวจความต้องการ หรือ ยอดเบิกจ่ายจริงในปีที่ผ่านมา มาเป็นตัวตั้งต้นในการคำนวณจำนวนตามแผนได้ด้วยปุ่มด้านบน หลังจากนั้นปรับแก้ตัวเลขแต่ละรายการได้ตามความเหมาะสม
+                     </p>
+                </div>
+            </div>
+
+            <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
                 {planData.map(renderTableRow)}
             </TableTemplate>
         </div>

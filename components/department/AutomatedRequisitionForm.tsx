@@ -7,6 +7,7 @@ import TrashIcon from '../icons/TrashIcon';
 import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
 import ShoppingCartIcon from '../icons/ShoppingCartIcon';
 import SignaturePadModal from '../SignaturePadModal';
+import { safeGetStorage, safeSetStorage, safeRemoveStorage } from '../../utils';
 
 interface AutomatedRequisitionFormProps {
     department: Department;
@@ -141,12 +142,12 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                 };
                 try {
                     if (items.length > 0 || name.trim() !== '') {
-                        localStorage.setItem(`unsavedRequisition_${department.id}`, JSON.stringify(draftData));
+                        safeSetStorage(`unsavedRequisition_${department.id}`, JSON.stringify(draftData));
                     } else {
-                        localStorage.removeItem(`unsavedRequisition_${department.id}`);
+                        safeRemoveStorage(`unsavedRequisition_${department.id}`);
                     }
                 } catch (e) {
-                    console.error("Failed to save draft to localStorage", e);
+                    console.error("Failed to save draft to storage", e);
                 }
             }, 500); 
         }
@@ -184,7 +185,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                 : `ใบเบิก ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear() + 543}`;
             setName(defaultName);
 
-            const savedRequester = localStorage.getItem(`requesterInfo-${department.id}`);
+            const savedRequester = safeGetStorage(`requesterInfo-${department.id}`);
             if (savedRequester) {
                 try {
                     const { name, position } = JSON.parse(savedRequester);
@@ -333,10 +334,10 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
             
             const savedReqId = await supabaseService.saveRequisition(requisitionData, itemsToSave, department.name);
 
-            localStorage.removeItem(`unsavedRequisition_${department.id}`);
+            safeRemoveStorage(`unsavedRequisition_${department.id}`);
 
             if (requesterName.trim() || requesterPosition.trim()) {
-                localStorage.setItem(`requesterInfo-${department.id}`, JSON.stringify({ name: requesterName.trim(), position: requesterPosition.trim() }));
+                safeSetStorage(`requesterInfo-${department.id}`, JSON.stringify({ name: requesterName.trim(), position: requesterPosition.trim() }));
             }
             
             onSaveSuccess(status === 'Submitted' ? savedReqId : undefined);
@@ -397,7 +398,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
 
         if (isDraft && hasContent) {
             if (window.confirm('คุณต้องการยกเลิกใบเบิกนี้หรือไม่? ข้อมูลฉบับร่างที่ยังไม่ได้บันทึกจะถูกลบ')) {
-                localStorage.removeItem(`unsavedRequisition_${department.id}`);
+                safeRemoveStorage(`unsavedRequisition_${department.id}`);
                 onCancel();
             }
         } else {
