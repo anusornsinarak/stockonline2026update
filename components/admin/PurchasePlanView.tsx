@@ -177,12 +177,17 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
         }
     };
 
-    const renderTableRow = (item: any) => (
+    const renderTableRow = (item: any) => {
+        const usageLastYear = item.usageHistory[selectedFiscalYear - 1] || 0;
+        const recommended5 = Math.ceil(usageLastYear * 1.05);
+        const recommended10 = Math.ceil(usageLastYear * 1.10);
+
+        return (
         <tr key={item.product.id} className="hover:bg-slate-50/70">
             <td className="px-6 py-2 text-sm font-medium text-slate-900 dark:text-slate-100">{item.product.name}</td>
             <td className="px-6 py-2 text-sm text-right">{item.product.pricePerUnit?.toLocaleString()}</td>
             <td className="px-6 py-2 text-sm text-right">{item.totalQuantity.toLocaleString()}</td>
-            <td className="px-6 py-2 text-sm text-right font-medium text-amber-700 dark:text-amber-500">{(item.usageHistory[selectedFiscalYear - 1] || 0).toLocaleString()}</td>
+            <td className="px-6 py-2 text-sm text-right font-medium text-amber-700 dark:text-amber-500">{usageLastYear.toLocaleString()}</td>
             <td className="px-6 py-2 w-32">
                 <input
                     type="number"
@@ -191,6 +196,26 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                     disabled={(isPlanLocked && isManuallyLocked) || isReadOnly}
                     className={`w-full text-right p-1 border rounded bg-white dark:bg-slate-700 disabled:bg-slate-100 disabled:opacity-75 ${manualStockOverrides[item.product.id] !== undefined ? 'text-blue-600 font-bold border-blue-300' : 'text-slate-600'}`}
                 />
+            </td>
+            <td className="px-6 py-2 text-sm text-center">
+                <div className="flex flex-col items-center justify-center gap-1">
+                    <button 
+                        onClick={() => !isReadOnly && handleManualQuantityChange(item.product.id, String(recommended5))}
+                        disabled={isReadOnly}
+                        className="text-[10px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded cursor-pointer transition-colors border border-emerald-200 w-full"
+                        title="คลิกเพื่อใช้ยอดนี้"
+                    >
+                        +5%: {recommended5.toLocaleString()}
+                    </button>
+                    <button 
+                        onClick={() => !isReadOnly && handleManualQuantityChange(item.product.id, String(recommended10))}
+                        disabled={isReadOnly}
+                        className="text-[10px] text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded cursor-pointer transition-colors border border-sky-200 w-full"
+                        title="คลิกเพื่อใช้ยอดนี้"
+                    >
+                        +10%: {recommended10.toLocaleString()}
+                    </button>
+                </div>
             </td>
             <td className="px-6 py-2 w-48">
                 <input
@@ -203,7 +228,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             </td>
             <td className="px-6 py-2 text-sm text-right font-bold text-sky-700">{item.plannedValue.toLocaleString()}</td>
         </tr>
-    );
+    )};
 
     return (
         <div className="space-y-6">
@@ -261,7 +286,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                 </div>
             </div>
 
-            <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
+            <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'ยอดแนะนำ', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
                 {planData.map(renderTableRow)}
             </TableTemplate>
         </div>
