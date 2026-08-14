@@ -84,13 +84,16 @@ const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title
         setPrevYearSurvey(prevQuantities);
       }
       
-      // If we have current survey data, the user has already submitted for this year.
+      // Load current survey data if it exists so user can edit
       if (surveyData?.quantities) {
-        alert('ส่งแบบสำรวจประจำปีเสร็จแล้ว');
-        if (onSurveySubmitted) {
-            onSurveySubmitted();
-        }
-        return;
+        const currentQuantities: Record<string, { quantity: number; price: number }> = {};
+        Object.entries(surveyData.quantities).forEach(([pid, details]) => {
+          currentQuantities[pid] = {
+            quantity: (details as { quantity: number; price?: number }).quantity || 0,
+            price: (details as { quantity: number; price?: number }).price || 0
+          };
+        });
+        setQuantities(currentQuantities);
       }
       
       // Auto-add items that had usage last year or were in the previous survey but aren't in fetchedProducts
@@ -194,13 +197,10 @@ const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title
     try {
       await supabaseService.submitSurvey(department.id, fySettings.fy_survey_year, quantitiesForSubmit);
       setSubmissionStatus('success');
-      alert('ส่งแบบสำรวจประจำปีเสร็จแล้ว');
+      alert('บันทึก/อัปเดตข้อมูลแบบสำรวจเรียบร้อยแล้ว');
       setTimeout(() => {
           setSubmissionStatus('idle');
-          if (onSurveySubmitted) {
-              onSurveySubmitted();
-          }
-      }, 500);
+      }, 3000);
     } catch (error) {
       console.error("Failed to submit survey:", error);
       setSubmissionStatus('error');
