@@ -32,6 +32,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(fiscalYear);
     const [currentPlan, setCurrentPlan] = useState<PurchasePlanItem[]>(initialPlan);
     const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+    const [isPrinting, setIsPrinting] = useState(false);
     
     const [plannedManualQuantities, setPlannedManualQuantities] = useState<Record<string, string>>({});
     const [manualStockOverrides, setManualStockOverrides] = useState<Record<string, number>>({});
@@ -177,6 +178,35 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
         }
     };
 
+    const handlePrint = () => {
+        setIsPrinting(true);
+        setTimeout(() => {
+            window.print();
+            setIsPrinting(false);
+        }, 100);
+    };
+
+    const handleExportExcel = () => {
+        const exportData = planData.map((item, index) => ({
+            'ลำดับ': index + 1,
+            'รายการเวชภัณฑ์': item.product.name,
+            'หน่วย': item.product.unit,
+            [`ใช้จริงปี ${selectedFiscalYear - 3}`]: item.usageHistory[selectedFiscalYear - 3] || 0,
+            [`ใช้จริงปี ${selectedFiscalYear - 2}`]: item.usageHistory[selectedFiscalYear - 2] || 0,
+            [`ใช้จริงปี ${selectedFiscalYear - 1}`]: item.usageHistory[selectedFiscalYear - 1] || 0,
+            'คงคลัง': item.currentStock,
+            'ยอดสำรวจ': item.totalQuantity,
+            'จำนวนตามแผน': item.plannedQty,
+            'ราคาต่อหน่วย': item.product.pricePerUnit,
+            'มูลค่าจัดซื้อ': item.plannedValue,
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Purchase Plan");
+        XLSX.writeFile(wb, `แผนจัดซื้อปี_${selectedFiscalYear}.xlsx`);
+    };
+
     const renderTableRow = (item: any) => {
         const usageLastYear = item.usageHistory[selectedFiscalYear - 1] || 0;
         const recommended5 = Math.ceil(usageLastYear * 1.05);
@@ -232,9 +262,26 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            {isPrinting ? (
+                <div className="print-only">
+                    <PurchasePlanPrintView 
+                        planData={planData} 
+                        fiscalYear={selectedFiscalYear} 
+                        documentSettings={documentSettings} 
+                    />
+                </div>
+            ) : null}
+            <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${isPrinting ? 'hidden print:hidden' : ''}`}>
                 <h3 className="text-xl font-bold">แผนการจัดซื้อปีงบประมาณ {selectedFiscalYear}</h3>
                 <div className="flex flex-wrap gap-2">
+                    <button onClick={handleExportExcel} className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-medium py-2 px-4 rounded-lg hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors shadow-sm flex items-center gap-2">
+                        <DownloadIcon className="w-5 h-5" />
+                        Excel
+                    </button>
+                    <button onClick={handlePrint} className="bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 font-medium py-2 px-4 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2">
+                        <PrinterIcon className="w-5 h-5" />
+                        พิมพ์แผน
+                    </button>
                     {!isReadOnly && (
                         <>
                             <button onClick={handleAutoCalculateFromUsage} className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 font-medium py-2 px-4 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-800/50 transition-colors shadow-sm">
@@ -251,7 +298,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                 </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isPrinting ? 'hidden print:hidden' : ''}`}>
                 <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-center">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">งบประมาณจัดซื้อรวม (ถ้ามี)</span>
@@ -286,9 +333,11 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                 </div>
             </div>
 
-            <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'ยอดแนะนำ', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
-                {planData.map(renderTableRow)}
-            </TableTemplate>
+            <div className={isPrinting ? 'hidden print:hidden' : ''}>
+                <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'ยอดแนะนำ', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
+                    {planData.map(renderTableRow)}
+                </TableTemplate>
+            </div>
         </div>
     );
 };
