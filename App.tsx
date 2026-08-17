@@ -47,7 +47,7 @@ const UpdateBanner: React.FC = () => {
     if (!isVisible) return null;
     return (
         <div className="bg-indigo-600 text-white px-4 py-2 text-center text-sm font-medium flex justify-between items-center z-[101] relative">
-            <span className="flex-1 text-center">🚀 ระบบอัปเดตล่าสุด: เพิ่มแผงเครื่องมือปรับยอดจัดซื้อทั้งหมด (+5%, +10%) และตารางเปรียบเทียบยอดสำรวจ (17 ส.ค. 2026)</span>
+            <span className="flex-1 text-center">🚀 ระบบอัปเดตล่าสุด: หน่วยงานสามารถดูสรุปเบิกจ่ายรวมยืมแบบรายปีงบประมาณ และระบบจะไม่นับรวมรายการค้างจ่าย/ไม่อนุมัติ (17 ส.ค. 2026)</span>
             <button onClick={() => setIsVisible(false)} className="hover:bg-indigo-700 px-2 py-1 rounded-full transition-colors ml-2">
                 ✕
             </button>

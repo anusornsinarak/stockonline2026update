@@ -24,6 +24,7 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
+    const [loanTransactions, setLoanTransactions] = useState<any[]>([]);
     const [inventory, setInventory] = useState<DepartmentInventoryItem[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     
@@ -36,19 +37,39 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
     const [selectedProductId, setSelectedProductId] = useState<string>('all');
     const [isPrinting, setIsPrinting] = useState(false);
 
+    const setThisFiscalYear = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth(); // 0-indexed
+        let startYear, endYear;
+        
+        if (month >= 9) { // Oct - Dec
+            startYear = year;
+            endYear = year + 1;
+        } else { // Jan - Sep
+            startYear = year - 1;
+            endYear = year;
+        }
+        
+        setStartDate(`${startYear}-10-01`);
+        setEndDate(`${endYear}-09-30`);
+    };
+
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             setError(null);
             try {
-                const [reqs, inv, prods] = await Promise.all([
+                const [reqs, inv, prods, allLoans] = await Promise.all([
                     supabaseService.getRequisitionsForDepartment(department.id),
                     supabaseService.getDepartmentInventory(department.id),
-                    supabaseService.getProducts()
+                    supabaseService.getProducts(),
+                    supabaseService.getLoanTransactions()
                 ]);
                 setRequisitions(reqs);
                 setInventory(inv);
                 setProducts(prods);
+                setLoanTransactions(allLoans.filter(l => l.departmentId === department.id && !l.isDerived));
             } catch (err) {
                 console.error(err);
                 setError('ไม่สามารถโหลดข้อมูลรายงานได้');
@@ -63,30 +84,26 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
         const start = new Date(`${startDate}T00:00:00`);
         const end = new Date(`${endDate}T23:59:59`);
         
-        // Filter requisitions for the selected date range and status
+        const itemMap = new Map<string, ReportItem>();
+
+        // 1. Process Requisitions
         const filteredReqs = requisitions.filter(req => {
-            // Include Ready, PartiallyApproved, Picking, and Submitted as they represent confirmed or pending usage
-            if (!['Completed', 'Ready', 'PartiallyApproved', 'Picking', 'Submitted'].includes(req.status)) return false;
+            if (!['Completed', 'Ready', 'PartiallyApproved', 'Picking'].includes(req.status)) return false;
             
-            // Fix: Ensure we convert the date string to a Date object before accessing properties
-            const rawDate = req.approvedAt || req.submittedAt || req.createdAt;
+            const rawDate = req.approvedAt || req.createdAt;
             if (!rawDate) return false;
             
             const dateObj = new Date(rawDate);
             return dateObj >= start && dateObj <= end;
         });
 
-        const itemMap = new Map<string, ReportItem>();
-
         filteredReqs.forEach(req => {
             req.items?.forEach(item => {
-                // Check selected product filter
                 if (selectedProductId !== 'all' && item.productId !== selectedProductId) return;
 
-                // Use approvedQuantity if available, otherwise fallback to requested quantity for legacy data
                 const approvedQty = item.approvedQuantity ?? item.quantity ?? 0;
                 
-                if (['Approved', 'Fulfilled', 'Loaned', 'LoanFulfilled', 'Pending'].includes(item.status) && approvedQty > 0) {
+                if (['Approved', 'Fulfilled', 'Loaned', 'LoanFulfilled'].includes(item.status) && approvedQty > 0) {
                     const product = products.find(p => p.id === item.productId);
                     if (!product) return;
 
@@ -98,7 +115,58 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
                     if (existing) {
                         existing.requisitionedQuantity += qty;
                         existing.totalValue += value;
-                        existing.pricePerUnit = pricePerUnit; // Update to latest or keep average? Just keep latest for simplicity.
+                        existing.pricePerUnit = pricePerUnit;
+                    } else {
+                        const invItem = inventory.find(i => i.productId === item.productId);
+                        const currentStock = invItem?.quantity || 0;
+                        const maxStock = invItem?.maxStock || null;
+                        
+                        let reserveRate = null;
+                        if (maxStock && maxStock > 0) {
+                            reserveRate = currentStock / maxStock;
+                        }
+
+                        itemMap.set(item.productId, {
+                            product,
+                            requisitionedQuantity: qty,
+                            pricePerUnit,
+                            totalValue: value,
+                            minStock: invItem?.minStock || null,
+                            maxStock,
+                            currentStock,
+                            reserveRate
+                        });
+                    }
+                }
+            });
+        });
+
+        // 2. Process Loan Transactions
+        const filteredLoans = loanTransactions.filter(loan => {
+            if (!['Approved', 'Loaned', 'Fulfilled', 'Completed'].includes(loan.status)) return false;
+            const rawDate = loan.createdAt;
+            if (!rawDate) return false;
+            const dateObj = new Date(rawDate);
+            return dateObj >= start && dateObj <= end;
+        });
+
+        filteredLoans.forEach(loan => {
+            loan.items?.forEach((item: any) => {
+                if (selectedProductId !== 'all' && item.productId !== selectedProductId) return;
+                
+                const qty = item.quantity || 0;
+                if (qty > 0) {
+                    const product = products.find(p => p.id === item.productId);
+                    if (!product) return;
+
+                    const existing = itemMap.get(item.productId);
+                    const pricePerUnit = item.product?.pricePerUnit || product.pricePerUnit || 0;
+                    const value = qty * pricePerUnit;
+
+                    if (existing) {
+                        existing.requisitionedQuantity += qty;
+                        existing.totalValue += value;
+                        existing.pricePerUnit = pricePerUnit;
                     } else {
                         const invItem = inventory.find(i => i.productId === item.productId);
                         const currentStock = invItem?.quantity || 0;
@@ -125,7 +193,7 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
         });
 
         return Array.from(itemMap.values()).sort((a, b) => a.product.name.localeCompare(b.product.name, 'th'));
-    }, [requisitions, inventory, products, startDate, endDate, selectedProductId]);
+    }, [requisitions, loanTransactions, inventory, products, startDate, endDate, selectedProductId]);
 
     const totalReportValue = reportData.reduce((sum, item) => sum + item.totalValue, 0);
 
@@ -194,6 +262,12 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
                                 onChange={(e) => setEndDate(e.target.value)}
                                 className="p-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                             />
+                            <button
+                                onClick={setThisFiscalYear}
+                                className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-medium py-2 px-3 rounded-lg transition-colors whitespace-nowrap"
+                            >
+                                ปีงบประมาณปัจจุบัน
+                            </button>
                         </div>
                         <button
                             onClick={handlePrint}
