@@ -138,6 +138,25 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
         return planData.reduce((sum, item) => sum + item.plannedValue, 0);
     }, [planData]);
 
+    const totalSurveyValue = useMemo(() => {
+        return planData.reduce((sum, item) => sum + (item.totalQuantity * (item.product.pricePerUnit || 0)), 0);
+    }, [planData]);
+
+    const totalSurveyQuantity = useMemo(() => planData.reduce((sum, item) => sum + item.totalQuantity, 0), [planData]);
+    const totalPlannedQuantity = useMemo(() => planData.reduce((sum, item) => sum + item.plannedQty, 0), [planData]);
+
+    const handleBulkApplyPercentage = (percent: number, base: 'usage' | 'survey') => {
+        if (!window.confirm(`ยืนยันปรับแผน +${percent}% จาก "${base === 'usage' ? 'ใช้จริงปีก่อน' : 'ยอดสำรวจ'}" ทุกรายการ? (ตัวเลขเดิมจะถูกทับ)`)) return;
+        
+        const newQtys: Record<string, string> = { ...plannedManualQuantities };
+        planData.forEach(item => {
+            const baseValue = base === 'usage' ? (item.usageHistory[selectedFiscalYear - 1] || 0) : item.totalQuantity;
+            const newValue = Math.ceil(baseValue * (1 + (percent / 100)));
+            newQtys[item.product.id] = String(newValue);
+        });
+        setPlannedManualQuantities(newQtys);
+    };
+
     const handleAutoCalculateFromSurvey = () => {
         if (!window.confirm('ยืนยันการคำนวณจำนวนตามแผนจากยอดสำรวจ? (ข้อมูลที่กรอกไว้จะถูกแทนที่)')) return;
         const newQtys: Record<string, string> = {};
@@ -298,23 +317,24 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                 </div>
             </div>
             
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isPrinting ? 'hidden print:hidden' : ''}`}>
+            <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${isPrinting ? 'hidden print:hidden' : ''}`}>
+                {/* Card 1: Budget and Planned Total */}
                 <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-center">
                     <div className="flex justify-between items-center mb-2">
-                        <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">งบประมาณจัดซื้อรวม (ถ้ามี)</span>
+                        <span className="text-slate-500 dark:text-slate-400 text-xs md:text-sm font-medium">งบประมาณจัดซื้อรวม</span>
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-slate-500">฿</span>
                             <input 
                                 type="number" 
                                 value={planningBudget}
                                 onChange={(e) => setPlanningBudget(Number(e.target.value) || 0)}
-                                className="w-32 text-right p-1 text-sm border rounded bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
+                                className="w-24 text-right p-1 text-sm border rounded bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
                             />
                         </div>
                     </div>
                     <div className="flex justify-between items-end">
                         <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">มูลค่าตามแผนรวม</span>
-                        <span className={`text-2xl font-bold ${totalPlannedValue > planningBudget && planningBudget > 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'}`}>
+                        <span className={`text-xl md:text-2xl font-bold ${totalPlannedValue > planningBudget && planningBudget > 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'}`}>
                             {totalPlannedValue.toLocaleString()} <span className="text-sm font-normal text-slate-500">บาท</span>
                         </span>
                     </div>
@@ -325,11 +345,63 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                     )}
                 </div>
                 
+                {/* Card 2: Comparison Survey vs Plan */}
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-center gap-2">
+                    <span className="text-slate-800 dark:text-slate-200 text-sm font-bold flex items-center gap-2">
+                        <CalculatorIcon className="w-4 h-4 text-sky-500" />
+                        เปรียบเทียบยอดสำรวจ vs ตามแผน
+                    </span>
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-slate-500">ยอดสำรวจรวม:</span>
+                        <span className="font-medium">{totalSurveyQuantity.toLocaleString()} ชิ้น <span className="text-[10px] text-slate-400">({totalSurveyValue.toLocaleString()} ฿)</span></span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-slate-500">ยอดตามแผนรวม:</span>
+                        <span className="font-medium text-sky-600 dark:text-sky-400">{totalPlannedQuantity.toLocaleString()} ชิ้น <span className="text-[10px] text-sky-400">({totalPlannedValue.toLocaleString()} ฿)</span></span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-100 dark:border-slate-700 mt-1">
+                        <span className="text-slate-500">ส่วนต่างมูลค่า:</span>
+                        <span className={`font-bold ${totalPlannedValue - totalSurveyValue > 0 ? 'text-emerald-600' : totalPlannedValue - totalSurveyValue < 0 ? 'text-amber-600' : 'text-slate-600'}`}>
+                            {totalPlannedValue - totalSurveyValue > 0 ? '+' : ''}{(totalPlannedValue - totalSurveyValue).toLocaleString()} ฿
+                        </span>
+                    </div>
+                </div>
+
+                {/* Card 3: Quick Adjust Tools */}
                 <div className="bg-sky-50 dark:bg-sky-900/20 p-4 rounded-xl border border-sky-100 dark:border-sky-800 flex flex-col justify-center">
-                     <p className="text-sm text-sky-800 dark:text-sky-200 leading-relaxed">
-                         <strong className="block mb-1">💡 เคล็ดลับการวางแผน:</strong>
-                         คุณสามารถนำยอดสำรวจความต้องการ หรือ ยอดเบิกจ่ายจริงในปีที่ผ่านมา มาเป็นตัวตั้งต้นในการคำนวณจำนวนตามแผนได้ด้วยปุ่มด้านบน หลังจากนั้นปรับแก้ตัวเลขแต่ละรายการได้ตามความเหมาะสม
-                     </p>
+                    <span className="text-sky-800 dark:text-sky-200 text-sm font-bold block mb-3">
+                        ⚡ ปรับยอดจำนวนตามแผนทั้งหมดด่วน
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button 
+                            onClick={() => handleBulkApplyPercentage(5, 'usage')}
+                            disabled={isReadOnly}
+                            className="text-xs bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 py-1.5 px-2 rounded hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                        >
+                            +5% (จากใช้จริง)
+                        </button>
+                        <button 
+                            onClick={() => handleBulkApplyPercentage(10, 'usage')}
+                            disabled={isReadOnly}
+                            className="text-xs bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-400 py-1.5 px-2 rounded hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                        >
+                            +10% (จากใช้จริง)
+                        </button>
+                        <button 
+                            onClick={() => handleBulkApplyPercentage(5, 'survey')}
+                            disabled={isReadOnly}
+                            className="text-xs bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 py-1.5 px-2 rounded hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                        >
+                            +5% (จากสำรวจ)
+                        </button>
+                        <button 
+                            onClick={() => handleBulkApplyPercentage(10, 'survey')}
+                            disabled={isReadOnly}
+                            className="text-xs bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-400 py-1.5 px-2 rounded hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                        >
+                            +10% (จากสำรวจ)
+                        </button>
+                    </div>
                 </div>
             </div>
 
