@@ -141,24 +141,24 @@ const PurchasePlanPrintView: React.FC<PurchasePlanPrintViewProps> = ({ planData,
             <div className="mt-6 space-y-6 text-center" style={{ fontSize: '8pt', lineHeight: '1.3' }}>
                 <div className="grid grid-cols-4 gap-x-4">
                     <div>
-                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้จัดทำ</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>(นางสาวอุไรวรรณ มาประเสริฐ)</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ตำแหน่งเจ้าหน้าที่</p>
+                        <p className="mb-10">ลงชื่อ........................................................ผู้จัดทำ</p>
+                        <p>({documentSettings?.planCreatorName || '...................................'})</p>
+                        <p>{documentSettings?.planCreatorPosition || '...................................'}</p>
                     </div>
                      <div>
-                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้เสนอ</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>(นางสาวสิริรัตน์ โกรไศยก์)</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ผู้อำนวยการโรงพยาบาลกบินทร์บุรี</p>
+                        <p className="mb-10">ลงชื่อ........................................................ผู้เสนอ</p>
+                        <p>({documentSettings?.planProposerName || '...................................'})</p>
+                        <p>{documentSettings?.planProposerPosition || '...................................'}</p>
                     </div>
                      <div>
-                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้เห็นชอบ</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>(นายอรรถรัตน์ จันทร์เพ็ญ)</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>นายแพทย์สาธารณสุขจังหวัดปราจีนบุรี</p>
+                        <p className="mb-10">ลงชื่อ........................................................ผู้เห็นชอบ</p>
+                        <p>({documentSettings?.planReviewerName || '...................................'})</p>
+                        <p>{documentSettings?.planReviewerPosition || '...................................'}</p>
                     </div>
                      <div>
-                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้อนุมัติ</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>({documentSettings?.documentApproverName || '...................................'})</p>
-                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>{documentSettings?.documentApproverPosition || '...................................'}</p>
+                        <p className="mb-10">ลงชื่อ........................................................ผู้อนุมัติ</p>
+                        <p>({documentSettings?.documentApproverName || '...................................'})</p>
+                        <p>{documentSettings?.documentApproverPosition || '...................................'}</p>
                     </div>
                 </div>
             </div>

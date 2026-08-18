@@ -2107,7 +2107,13 @@ export const supabaseService = {
             documentDisbursementApproverName: settings.document_disbursement_approver_name,
             documentDisbursementApproverPosition: settings.document_disbursement_approver_position,
             documentReceiverName: settings.document_receiver_name,
-            documentReceiverPosition: settings.document_receiver_position
+            documentReceiverPosition: settings.document_receiver_position,
+            planCreatorName: settings.plan_creator_name,
+            planCreatorPosition: settings.plan_creator_position,
+            planProposerName: settings.plan_proposer_name,
+            planProposerPosition: settings.plan_proposer_position,
+            planReviewerName: settings.plan_reviewer_name,
+            planReviewerPosition: settings.plan_reviewer_position
         };
     },
 
@@ -2122,7 +2128,13 @@ export const supabaseService = {
             this.updateSystemSetting('document_disbursement_approver_name', settings.documentDisbursementApproverName),
             this.updateSystemSetting('document_disbursement_approver_position', settings.documentDisbursementApproverPosition),
             this.updateSystemSetting('document_receiver_name', settings.documentReceiverName),
-            this.updateSystemSetting('document_receiver_position', settings.documentReceiverPosition)
+            this.updateSystemSetting('document_receiver_position', settings.documentReceiverPosition),
+            this.updateSystemSetting('plan_creator_name', settings.planCreatorName),
+            this.updateSystemSetting('plan_creator_position', settings.planCreatorPosition),
+            this.updateSystemSetting('plan_proposer_name', settings.planProposerName),
+            this.updateSystemSetting('plan_proposer_position', settings.planProposerPosition),
+            this.updateSystemSetting('plan_reviewer_name', settings.planReviewerName),
+            this.updateSystemSetting('plan_reviewer_position', settings.planReviewerPosition)
         ]);
     },
 

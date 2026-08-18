@@ -181,6 +181,86 @@ const DocumentSettingsView: React.FC<DocumentSettingsViewProps> = ({ initialSett
                             />
                         </div>
                     </div>
+
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-medium leading-6 text-slate-900 border-b pb-2">ลายมือชื่อในแผนจัดซื้อ (Purchase Plan)</h3>
+                        
+                        <div className="pt-2">
+                            <label htmlFor="planCreatorName" className="block text-sm font-medium text-slate-700">ชื่อผู้จัดทำแผน</label>
+                            <input
+                                type="text"
+                                id="planCreatorName"
+                                name="planCreatorName"
+                                value={settings.planCreatorName || ''}
+                                onChange={handleChange}
+                                className="mt-1 block w-full border-slate-300 rounded-lg shadow-sm"
+                                placeholder="เช่น นายเจ้าหน้าที่ พัสดุ"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="planCreatorPosition" className="block text-sm font-medium text-slate-700">ตำแหน่งผู้จัดทำแผน</label>
+                            <input
+                                type="text"
+                                id="planCreatorPosition"
+                                name="planCreatorPosition"
+                                value={settings.planCreatorPosition || ''}
+                                onChange={handleChange}
+                                className="mt-1 block w-full border-slate-300 rounded-lg shadow-sm"
+                                placeholder="เช่น เจ้าหน้าที่พัสดุ"
+                            />
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100">
+                            <label htmlFor="planProposerName" className="block text-sm font-medium text-slate-700">ชื่อผู้เสนอแผน</label>
+                            <input
+                                type="text"
+                                id="planProposerName"
+                                name="planProposerName"
+                                value={settings.planProposerName || ''}
+                                onChange={handleChange}
+                                className="mt-1 block w-full border-slate-300 rounded-lg shadow-sm"
+                                placeholder="เช่น นายหัวหน้า งาน"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="planProposerPosition" className="block text-sm font-medium text-slate-700">ตำแหน่งผู้เสนอแผน</label>
+                            <input
+                                type="text"
+                                id="planProposerPosition"
+                                name="planProposerPosition"
+                                value={settings.planProposerPosition || ''}
+                                onChange={handleChange}
+                                className="mt-1 block w-full border-slate-300 rounded-lg shadow-sm"
+                                placeholder="เช่น หัวหน้าเจ้าหน้าที่"
+                            />
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100">
+                            <label htmlFor="planReviewerName" className="block text-sm font-medium text-slate-700">ชื่อผู้เห็นชอบแผน</label>
+                            <input
+                                type="text"
+                                id="planReviewerName"
+                                name="planReviewerName"
+                                value={settings.planReviewerName || ''}
+                                onChange={handleChange}
+                                className="mt-1 block w-full border-slate-300 rounded-lg shadow-sm"
+                                placeholder="เช่น นายผู้อำนวยการ โรงพยาบาล"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="planReviewerPosition" className="block text-sm font-medium text-slate-700">ตำแหน่งผู้เห็นชอบแผน</label>
+                            <input
+                                type="text"
+                                id="planReviewerPosition"
+                                name="planReviewerPosition"
+                                value={settings.planReviewerPosition || ''}
+                                onChange={handleChange}
+                                className="mt-1 block w-full border-slate-300 rounded-lg shadow-sm"
+                                placeholder="เช่น ผู้อำนวยการโรงพยาบาล"
+                            />
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-slate-700">โลโก้โรงพยาบาล</label>
                         <div className="mt-1 flex justify-center items-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-md">

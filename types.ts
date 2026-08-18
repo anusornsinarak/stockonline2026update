@@ -246,6 +246,14 @@ export interface DocumentSettings {
     documentDisbursementApproverPosition?: string | null;
     documentReceiverName?: string | null;
     documentReceiverPosition?: string | null;
+    
+    // Purchase Plan specific signatures
+    planCreatorName?: string | null;
+    planCreatorPosition?: string | null;
+    planProposerName?: string | null;
+    planProposerPosition?: string | null;
+    planReviewerName?: string | null;
+    planReviewerPosition?: string | null;
 }
 
 export type ProductIssueType = 'FOR_RESOLUTION' | 'REQUEST_REPLACEMENT';
