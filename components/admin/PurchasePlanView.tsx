@@ -31,8 +31,10 @@ interface PurchasePlanViewProps {
 export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [], fiscalYear, currentFiscalYearBE, budget, aggregatedSurveyData, initialPlan, onPlanSave, inventory, documentSettings, productUsageHistory, isReadOnly }) => {
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(fiscalYear);
     const [currentPlan, setCurrentPlan] = useState<PurchasePlanItem[]>(initialPlan);
+    const [previousPlan, setPreviousPlan] = useState<PurchasePlanItem[]>([]);
     const [isLoadingPlan, setIsLoadingPlan] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
+    const [printOrientation, setPrintOrientation] = useState<'portrait' | 'landscape'>('portrait');
     
     const [plannedManualQuantities, setPlannedManualQuantities] = useState<Record<string, string>>({});
     const [manualStockOverrides, setManualStockOverrides] = useState<Record<string, number>>({});
@@ -57,12 +59,14 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
         const fetchPlanForYear = async () => {
             setIsLoadingPlan(true);
             try {
-                const [plan, manualStock] = await Promise.all([
+                const [plan, manualStock, prevPlan] = await Promise.all([
                     supabaseService.getPurchasePlan(selectedFiscalYear),
-                    supabaseService.getPurchasePlanManualStock(selectedFiscalYear)
+                    supabaseService.getPurchasePlanManualStock(selectedFiscalYear),
+                    supabaseService.getPurchasePlan(selectedFiscalYear - 1)
                 ]);
                 setCurrentPlan(plan);
                 setManualStockOverrides(manualStock);
+                setPreviousPlan(prevPlan);
             } catch (error) {
                 console.error(`Failed to fetch plan for year ${selectedFiscalYear}`, error);
             } finally {
@@ -73,6 +77,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
         if (selectedFiscalYear === fiscalYear) {
             setCurrentPlan(initialPlan);
             supabaseService.getPurchasePlanManualStock(selectedFiscalYear).then(setManualStockOverrides);
+            supabaseService.getPurchasePlan(selectedFiscalYear - 1).then(setPreviousPlan);
         } else {
             fetchPlanForYear();
         }
@@ -114,6 +119,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
     const planData = useMemo(() => {
         if (!products || !Array.isArray(products)) return [];
         const surveyMap = new Map<string, any>(aggregatedSurveyData.map(s => [s.product.id, s]));
+        const prevPlanMap = new Map<string, number>(previousPlan.map(p => [p.productId, p.plannedQuantity]));
         const usageHistoryByProduct = Array.isArray(productUsageHistory) ? productUsageHistory.reduce((acc, usage) => {
             if (!acc[usage.productId]) acc[usage.productId] = {};
             acc[usage.productId][usage.fiscalYear] = usage.totalQuantity;
@@ -124,15 +130,16 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             const surveyData = surveyMap.get(product.id);
             const totalQuantity = surveyData ? surveyData.totalQuantity : 0;
             const plannedQty = parseInt(plannedManualQuantities[product.id] || '0', 10) || 0;
+            const previousPlanQty = prevPlanMap.get(product.id) || 0;
             const realStock = inventoryMap.get(product.id) || 0;
             const currentStock = manualStockOverrides[product.id] !== undefined ? manualStockOverrides[product.id] : realStock;
             const price = product.pricePerUnit || 0;
             const plannedValue = plannedQty * price;
             const usageHistory = usageHistoryByProduct[product.id] || {};
 
-            return { product, totalQuantity, plannedQty, currentStock, realStock, plannedValue, usageHistory };
+            return { product, totalQuantity, plannedQty, previousPlanQty, currentStock, realStock, plannedValue, usageHistory };
         }).sort((a,b) => a.product.name.localeCompare(b.product.name, 'th'));
-    }, [products, aggregatedSurveyData, plannedManualQuantities, manualStockOverrides, inventoryMap, productUsageHistory]);
+    }, [products, aggregatedSurveyData, previousPlan, plannedManualQuantities, manualStockOverrides, inventoryMap, productUsageHistory]);
 
     const totalPlannedValue = useMemo(() => {
         return planData.reduce((sum, item) => sum + item.plannedValue, 0);
@@ -266,6 +273,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                     </button>
                 </div>
             </td>
+            <td className="px-6 py-2 text-sm text-right text-gray-500 bg-gray-50/50 dark:bg-slate-800/50">{item.previousPlanQty.toLocaleString()}</td>
             <td className="px-6 py-2 w-48">
                 <input
                     type="number"
@@ -287,16 +295,25 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                         planData={planData} 
                         fiscalYear={selectedFiscalYear} 
                         documentSettings={documentSettings} 
+                        printOrientation={printOrientation}
                     />
                 </div>
             ) : null}
             <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${isPrinting ? 'hidden print:hidden' : ''}`}>
                 <h3 className="text-xl font-bold">แผนการจัดซื้อปีงบประมาณ {selectedFiscalYear}</h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button onClick={handleExportExcel} className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-medium py-2 px-4 rounded-lg hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors shadow-sm flex items-center gap-2">
                         <DownloadIcon className="w-5 h-5" />
                         Excel
                     </button>
+                    <select
+                        value={printOrientation}
+                        onChange={(e) => setPrintOrientation(e.target.value as 'portrait' | 'landscape')}
+                        className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 text-sm"
+                    >
+                        <option value="portrait">พิมพ์แนวตั้ง</option>
+                        <option value="landscape">พิมพ์แนวนอน</option>
+                    </select>
                     <button onClick={handlePrint} className="bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 font-medium py-2 px-4 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2">
                         <PrinterIcon className="w-5 h-5" />
                         พิมพ์แผน
@@ -406,7 +423,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             </div>
 
             <div className={isPrinting ? 'hidden print:hidden' : ''}>
-                <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'ยอดแนะนำ', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
+                <TableTemplate headers={['รายการ', 'ราคา/หน่วย', 'ยอดสำรวจ', 'ใช้จริงปีก่อน', 'คงคลัง', 'ยอดแนะนำ', 'แผนซื้อปีก่อน', 'จำนวนตามแผน', 'มูลค่าจัดซื้อ']}>
                     {planData.map(renderTableRow)}
                 </TableTemplate>
             </div>

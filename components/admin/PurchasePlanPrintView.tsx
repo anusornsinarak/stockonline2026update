@@ -5,6 +5,7 @@ import { Product, DocumentSettings, ProductCategory } from '../../types';
 interface PlanDataItem {
     product: Product;
     plannedQty: number;
+    previousPlanQty?: number;
     currentStock: number;
     plannedValue: number;
     totalQuantity: number; // This is the surveyed quantity
@@ -15,9 +16,10 @@ interface PurchasePlanPrintViewProps {
     planData: PlanDataItem[];
     fiscalYear: number;
     documentSettings: DocumentSettings | null;
+    printOrientation?: 'portrait' | 'landscape';
 }
 
-const PurchasePlanPrintView: React.FC<PurchasePlanPrintViewProps> = ({ planData, fiscalYear, documentSettings }) => {
+const PurchasePlanPrintView: React.FC<PurchasePlanPrintViewProps> = ({ planData, fiscalYear, documentSettings, printOrientation = 'portrait' }) => {
 
     // Helper functions for formatting
     const formatCurrency = (val: number) => val === 0 ? '-' : (val || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -139,27 +141,32 @@ const PurchasePlanPrintView: React.FC<PurchasePlanPrintViewProps> = ({ planData,
             <div className="mt-6 space-y-6 text-center" style={{ fontSize: '8pt', lineHeight: '1.3' }}>
                 <div className="grid grid-cols-4 gap-x-4">
                     <div>
-                        <p className="mb-10">ลงชื่อ........................................................ผู้จัดทำ</p>
-                        <p>(นางสาวอุไรวรรณ มาประเสริฐ)</p>
-                        <p>ตำแหน่งเจ้าหน้าที่</p>
+                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้จัดทำ</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>(นางสาวอุไรวรรณ มาประเสริฐ)</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ตำแหน่งเจ้าหน้าที่</p>
                     </div>
                      <div>
-                        <p className="mb-10">ลงชื่อ........................................................ผู้เสนอ</p>
-                        <p>(นางสาวสิริรัตน์ โกรไศยก์)</p>
-                        <p>ผู้อำนวยการโรงพยาบาลกบินทร์บุรี</p>
+                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้เสนอ</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>(นางสาวสิริรัตน์ โกรไศยก์)</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ผู้อำนวยการโรงพยาบาลกบินทร์บุรี</p>
                     </div>
                      <div>
-                        <p className="mb-10">ลงชื่อ........................................................ผู้เห็นชอบ</p>
-                        <p>(นายอรรถรัตน์ จันทร์เพ็ญ)</p>
-                        <p>นายแพทย์สาธารณสุขจังหวัดปราจีนบุรี</p>
+                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้เห็นชอบ</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>(นายอรรถรัตน์ จันทร์เพ็ญ)</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>นายแพทย์สาธารณสุขจังหวัดปราจีนบุรี</p>
                     </div>
                      <div>
-                        <p className="mb-10">ลงชื่อ........................................................ผู้อนุมัติ</p>
-                        <p>({documentSettings?.documentApproverName || '...................................'})</p>
-                        <p>{documentSettings?.documentApproverPosition || '...................................'}</p>
+                        <p className="mb-10 outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>ลงชื่อ........................................................ผู้อนุมัติ</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>({documentSettings?.documentApproverName || '...................................'})</p>
+                        <p className="outline-none focus:border-b focus:border-dashed border-gray-400 min-w-[50px] inline-block" contentEditable suppressContentEditableWarning>{documentSettings?.documentApproverPosition || '...................................'}</p>
                     </div>
                 </div>
             </div>
+            {printOrientation === 'landscape' && (
+                <style type="text/css">
+                    {`@media print { @page { size: A4 landscape !important; margin: 0.5cm; } }`}
+                </style>
+            )}
         </div>
     );
 };
