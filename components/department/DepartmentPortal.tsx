@@ -36,6 +36,7 @@ interface DepartmentPortalProps {
     nextFiscalYearBE: number;
     stopAlert: () => void;
     onDataChange: () => void;
+    onNavigateToDashboard?: () => void;
 }
 
 export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
@@ -50,6 +51,7 @@ export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
     nextFiscalYearBE,
     stopAlert,
     onDataChange,
+    onNavigateToDashboard,
 }) => {
     const [activeTab, setActiveTab] = useState<Tab>(initialTab || 'requisition');
     const [purchasePlan, setPurchasePlan] = useState<PurchasePlanItem[]>([]);
@@ -144,7 +146,7 @@ export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
                     />
                 );
             case 'survey':
-                return <SurveyForm department={department} isSurveyOpen={isSurveyOpen} title={surveyTitle} purchasePlan={purchasePlan} allSurveyResults={allSurveyResults} onSurveySubmitted={() => setActiveTab('requisition')} />;
+                return <SurveyForm department={department} isSurveyOpen={isSurveyOpen} title={surveyTitle} purchasePlan={purchasePlan} allSurveyResults={allSurveyResults} onSurveySubmitted={() => onNavigateToDashboard ? onNavigateToDashboard() : setActiveTab('requisition')} />;
             case 'inventory':
                 return <DepartmentInventoryView department={department} />;
             case 'usage_scanner':

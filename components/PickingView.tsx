@@ -161,10 +161,8 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
             
             const handleAfterPrint = () => {
                 setRequisitionToPrint(null);
-                // After auto-printing from save, close the view
-                if (!isProcessing) {
-                    onClose();
-                }
+                setIsProcessing(false);
+                onClose();
             };
             window.addEventListener('afterprint', handleAfterPrint, { once: true });
             return () => { clearTimeout(timer); window.removeEventListener('afterprint', handleAfterPrint); };

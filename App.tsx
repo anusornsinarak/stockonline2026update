@@ -262,6 +262,7 @@ const App: React.FC = () => {
                 nextFiscalYearBE={fySettings.fy_survey_year}
                 stopAlert={() => setAlertMessage(null)}
                 onDataChange={() => fetchNotifications(true)}
+                onNavigateToDashboard={() => setActiveView({ type: 'dashboard' })}
              />;
     }
     if (user?.role === 'Warehouse' && activeView.type === 'warehouse') {
