@@ -227,7 +227,7 @@ const ManageItemsView: React.FC<{
                                 const productsInCategory = groupedProducts[category];
                                 return (
                                     <div key={category}>
-                                        <h3 className="text-lg font-semibold text-slate-700 mb-3">{category}</h3>
+                                        <h3 className="text-lg font-semibold text-slate-700 mb-3">{category} ({productsInCategory.length} รายการ)</h3>
                                         <TableTemplate headers={['รายการ', 'หน่วย', 'คงคลัง', 'Min', 'Max', 'ราคาปัจจุบัน (บาท)', 'บริษัทผู้จัดหา', 'การดำเนินการ']}>
                                             {productsInCategory.map(product => {
                                                 const currentStock = inventoryMap.get(product.id) ?? 0;
