@@ -30,6 +30,7 @@ import ArrowPathIcon from './icons/ArrowPathIcon';
 import LoadingScreen from './LoadingScreen';
 
 import { SummaryView } from './admin/SummaryView';
+import InventoryView from './admin/InventoryView';
 import { DepartmentView } from './admin/DepartmentView';
 import ManageItemsView from './admin/ManageItemsView';
 import ManageDepartmentsView from './admin/ManageDepartmentsView';
@@ -69,7 +70,7 @@ import DocumentPlusIcon from './icons/DocumentPlusIcon';
 import { LoanSystemView } from './admin/LoanSystemView';
 import { LoanQRCodeView } from './admin/LoanQRCodeView';
 
-type Tab = 'summary' | 'departments' | 'purchasePlan' | 'requisitions' | 'purchaseOrder' | 'receipts' | 'stockCard' | 'expiringStock' | 'reports' | 'manageItems' | 'manageStockLevels' | 'manageDepts' | 'manageUsers' | 'managePersonnel' | 'notifications' | 'system' | 'logs' | 'documentSettings' | 'accountSettings' | 'manageAnnouncements' | 'loanSystem' | 'loanQRCode' | 'manageSurvey';
+type Tab = 'summary' | 'inventorySummary' | 'departments' | 'purchasePlan' | 'requisitions' | 'purchaseOrder' | 'receipts' | 'stockCard' | 'expiringStock' | 'reports' | 'manageItems' | 'manageStockLevels' | 'manageDepts' | 'manageUsers' | 'managePersonnel' | 'notifications' | 'system' | 'logs' | 'documentSettings' | 'accountSettings' | 'manageAnnouncements' | 'loanSystem' | 'loanQRCode' | 'manageSurvey';
 
 interface AdminDashboardProps {
   user: User;
@@ -90,7 +91,7 @@ interface AdminDashboardProps {
 const navGroups: Record<string, { icon: React.ReactNode; items: Partial<Record<Tab, string | ((data: any) => string)>> }> = {
   'ภาพรวมและการวางแผน': {
     icon: <ChartBarIcon className="w-5 h-5"/>,
-    items: { summary: 'สรุปผลรวม', departments: 'ผลรายหน่วยงาน', purchasePlan: (d) => `วางแผนจัดซื้อ (${d.products?.length || 0})`, reports: 'รายงาน' },
+    items: { summary: 'สรุปผลรวม', inventorySummary: 'สรุปคงคลัง', departments: 'ผลรายหน่วยงาน', purchasePlan: (d) => `วางแผนจัดซื้อ (${d.products?.length || 0})`, reports: 'รายงาน' },
   },
   'ปฏิบัติการคลัง': {
     icon: <CubeIcon className="w-5 h-5"/>,
@@ -354,6 +355,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       
       switch (activeTab) {
           case 'summary': return <SummaryView data={aggregatedSurveyData} requisitions={data.requisitions} fiscalYear={viewFiscalYear} budget={budget} isLoadingBudget={isLoadingBudget} onBudgetChange={() => fetchData(true)} />;
+          case 'inventorySummary': return <InventoryView products={data.products} inventory={data.inventory} onDataChange={() => fetchData(true)} onViewStockCard={(productId) => {
+              // Instead of routing, we can change tab to stockCard and set initial product if possible, 
+              // but since StockCard doesn't accept a prop for initial product in its current API without modifying it,
+              // we can just switch tab.
+              setActiveTab('stockCard');
+          }} />;
           case 'departments': return <DepartmentView results={data.surveySubmissions} products={data.products} departments={data.departments} requisitions={data.requisitions} onDataChange={() => fetchData(true)} isReadOnly={isReadOnly} fiscalYear={viewFiscalYear} documentSettings={documentSettings} />;
           case 'purchasePlan': return <PurchasePlanView products={data.products} fiscalYear={viewFiscalYear} currentFiscalYearBE={currentFiscalYearBE} budget={budget} aggregatedSurveyData={aggregatedSurveyData} initialPlan={data.purchasePlan} onPlanSave={() => fetchData(true)} inventory={data.inventory} documentSettings={documentSettings} productUsageHistory={data.productUsageHistory} isReadOnly={isReadOnly} />;
           case 'reports': return <ReportsView requisitions={data.requisitions} products={data.products} departments={data.departments} inventory={data.inventory} goodsReceivedNotes={data.goodsReceivedNotes} purchasePlan={data.purchasePlan} surveyResults={data.surveySubmissions} productUsageHistory={data.productUsageHistory} documentSettings={documentSettings} />;

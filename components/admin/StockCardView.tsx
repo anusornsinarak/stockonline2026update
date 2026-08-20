@@ -13,7 +13,7 @@ import PlusIcon from '../icons/PlusIcon';
 import MinusIcon from '../icons/MinusIcon';
 import PencilSquareIcon from '../icons/PencilSquareIcon';
 import MagnifyingGlassIcon from '../icons/MagnifyingGlassIcon';
-import ChevronDownIcon from '../icons/ChevronDownIcon';
+import StockAdjustmentModal from './StockAdjustmentModal';
 
 
 interface StockCardViewProps {
@@ -45,90 +45,6 @@ const InfoBox: React.FC<{ title: string, children: React.ReactNode, className?: 
     </div>
 );
 
-const StockAdjustmentModal: React.FC<{
-    isOpen: boolean;
-    onClose: () => void;
-    product: Product;
-    currentStock: number;
-    onSuccess: () => void;
-}> = ({ isOpen, onClose, product, currentStock, onSuccess }) => {
-    const [adjustmentType, setAdjustmentType] = useState<'increase' | 'decrease'>('increase');
-    const [quantity, setQuantity] = useState('');
-    const [notes, setNotes] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-        if (isOpen) {
-            setAdjustmentType('increase');
-            setQuantity('');
-            setNotes('');
-            setError('');
-            setIsSaving(false);
-        }
-    }, [isOpen]);
-
-    const quantityChange = parseInt(quantity, 10) || 0;
-    const newStock = adjustmentType === 'increase' ? currentStock + quantityChange : currentStock - quantityChange;
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (quantityChange <= 0 || !notes.trim()) {
-            setError('กรุณากรอกจำนวนและเหตุผลให้ถูกต้อง');
-            return;
-        }
-        if (adjustmentType === 'decrease' && quantityChange > currentStock) {
-            setError('จำนวนที่ลดต้องไม่เกินยอดคงคลังปัจจุบัน');
-            return;
-        }
-        
-        setIsSaving(true);
-        setError('');
-        try {
-            const finalQuantityChange = adjustmentType === 'increase' ? quantityChange : -quantityChange;
-            await supabaseService.adjustStockQuantity(product.id, finalQuantityChange, notes);
-            alert('ปรับสต็อกสำเร็จ!');
-            onSuccess();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`ปรับสต็อก: ${product.name}`}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">ประเภทการปรับ</label>
-                    <div className="mt-2 flex gap-4">
-                        <label className="flex items-center"><input type="radio" value="increase" checked={adjustmentType === 'increase'} onChange={() => setAdjustmentType('increase')} className="h-4 w-4" /> <span className="ml-2">เพิ่มสต็อก</span></label>
-                        <label className="flex items-center"><input type="radio" value="decrease" checked={adjustmentType === 'decrease'} onChange={() => setAdjustmentType('decrease')} className="h-4 w-4" /> <span className="ml-2">ลดสต็อก</span></label>
-                    </div>
-                </div>
-                <div>
-                    <label htmlFor="adj-quantity" className="block text-sm font-medium text-slate-700 dark:text-slate-200">จำนวนที่ปรับ</label>
-                    <input id="adj-quantity" type="number" min="1" value={quantity} onChange={e => setQuantity(e.target.value)} className="mt-1 w-full p-2 border border-slate-300 dark:border-slate-600 rounded-md" required />
-                </div>
-                 <div className="grid grid-cols-2 gap-4 text-center">
-                    <InfoBox title="คงคลังปัจจุบัน"><p className="text-xl font-bold">{currentStock.toLocaleString()}</p></InfoBox>
-                    <InfoBox title="คงคลังหลังปรับ"><p className="text-xl font-bold text-sky-600 dark:text-sky-400">{newStock.toLocaleString()}</p></InfoBox>
-                </div>
-                <div>
-                    <label htmlFor="adj-notes" className="block text-sm font-medium text-slate-700 dark:text-slate-200">หมายเหตุ / เหตุผล (สำคัญมาก)</label>
-                    <textarea id="adj-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="mt-1 w-full border border-slate-300 dark:border-slate-600 rounded-md" required placeholder="เช่น จากการนับสต็อกจริง, ของชำรุด, ปรับยอดยกมา" />
-                </div>
-                {error && <p className="text-sm text-red-600">{error}</p>}
-                <div className="flex justify-end gap-3 pt-4 border-t dark:border-slate-600">
-                    <button type="button" onClick={onClose} className="bg-slate-200 font-bold py-2 px-4 rounded-lg">ยกเลิก</button>
-                    <button type="submit" disabled={isSaving} className="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg disabled:bg-slate-400">
-                        {isSaving ? 'กำลังบันทึก...' : 'ยืนยันการปรับสต็อก'}
-                    </button>
-                </div>
-            </form>
-        </Modal>
-    );
-};
 
 
 const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], inventory = [], goodsReceivedNotes = [], purchaseOrders = [], companies = [], onDataChange }) => {

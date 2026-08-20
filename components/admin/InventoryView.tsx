@@ -2,16 +2,24 @@ import React, { useState, useMemo } from 'react';
 import { InventoryItem, Product } from '../../types';
 import TableTemplate from './TableTemplate';
 import ClockIcon from '../icons/ClockIcon';
+import PencilSquareIcon from '../icons/PencilSquareIcon';
 import ChevronUpIcon from '../icons/ChevronUpIcon';
 import ChevronDownIcon from '../icons/ChevronDownIcon';
+import StockAdjustmentModal from './StockAdjustmentModal';
 
 const InventoryView: React.FC<{
     products: Product[];
     inventory: InventoryItem[];
     onViewStockCard: (productId: string) => void;
-}> = ({ products, inventory, onViewStockCard }) => {
+    onDataChange: () => void;
+}> = ({ products, inventory, onViewStockCard, onDataChange }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+    
+    // Adjustment modal states
+    const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+    const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
+    const [adjustCurrentStock, setAdjustCurrentStock] = useState(0);
 
     const inventoryMap = useMemo(() => new Map(inventory.map(item => [item.productId, item])), [inventory]);
 
@@ -74,6 +82,12 @@ const InventoryView: React.FC<{
         'การดำเนินการ'
     ];
 
+    const openAdjustModal = (product: Product, currentStock: number) => {
+        setAdjustProduct(product);
+        setAdjustCurrentStock(currentStock);
+        setIsAdjustModalOpen(true);
+    };
+
     return (
         <div>
             <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -101,13 +115,22 @@ const InventoryView: React.FC<{
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{timeSince(item.updatedAt)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                            <button 
-                                onClick={() => onViewStockCard(item.product.id)} 
-                                className="text-slate-500 hover:text-sky-600 transition-colors"
-                                title="ดูประวัติ"
-                            >
-                                <ClockIcon className="w-5 h-5"/>
-                            </button>
+                            <div className="flex items-center justify-center gap-3">
+                                <button 
+                                    onClick={() => onViewStockCard(item.product.id)} 
+                                    className="text-slate-500 hover:text-sky-600 transition-colors"
+                                    title="ดูประวัติ (Stock Card)"
+                                >
+                                    <ClockIcon className="w-5 h-5"/>
+                                </button>
+                                <button 
+                                    onClick={() => openAdjustModal(item.product, item.quantity)}
+                                    className="text-amber-500 hover:text-amber-600 transition-colors"
+                                    title="ปรับสต็อก (Physical Count)"
+                                >
+                                    <PencilSquareIcon className="w-5 h-5"/>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 ))}
@@ -117,6 +140,19 @@ const InventoryView: React.FC<{
                     </tr>
                 )}
             </TableTemplate>
+            
+            {adjustProduct && (
+                <StockAdjustmentModal
+                    isOpen={isAdjustModalOpen}
+                    onClose={() => setIsAdjustModalOpen(false)}
+                    product={adjustProduct}
+                    currentStock={adjustCurrentStock}
+                    onSuccess={() => {
+                        setIsAdjustModalOpen(false);
+                        onDataChange();
+                    }}
+                />
+            )}
         </div>
     );
 };
