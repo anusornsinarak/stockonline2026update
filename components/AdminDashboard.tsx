@@ -87,10 +87,10 @@ interface AdminDashboardProps {
   stopAlert: () => void;
 }
 
-const navGroups: Record<string, { icon: React.ReactNode; items: Partial<Record<Tab, string>> }> = {
+const navGroups: Record<string, { icon: React.ReactNode; items: Partial<Record<Tab, string | ((data: any) => string)>> }> = {
   'ภาพรวมและการวางแผน': {
     icon: <ChartBarIcon className="w-5 h-5"/>,
-    items: { summary: 'สรุปผลรวม', departments: 'ผลรายหน่วยงาน', purchasePlan: 'วางแผนจัดซื้อ', reports: 'รายงาน' },
+    items: { summary: 'สรุปผลรวม', departments: 'ผลรายหน่วยงาน', purchasePlan: (d) => `วางแผนจัดซื้อ (${d.products?.length || 0})`, reports: 'รายงาน' },
   },
   'ปฏิบัติการคลัง': {
     icon: <CubeIcon className="w-5 h-5"/>,
@@ -98,7 +98,7 @@ const navGroups: Record<string, { icon: React.ReactNode; items: Partial<Record<T
   },
   'การจัดการ': {
     icon: <UsersIcon className="w-5 h-5"/>,
-    items: { manageItems: 'จัดการรายการและบริษัท', manageStockLevels: 'จัดการ Min/Max Stock', manageDepts: 'จัดการหน่วยงาน', manageUsers: 'จัดการผู้ใช้', managePersonnel: 'จัดการบุคลากร' },
+    items: { manageItems: (d) => `จัดการรายการและบริษัท (${d.products?.length || 0})`, manageStockLevels: 'จัดการ Min/Max Stock', manageDepts: 'จัดการหน่วยงาน', manageUsers: 'จัดการผู้ใช้', managePersonnel: 'จัดการบุคลากร' },
   },
   'ระบบและการตั้งค่า': {
     icon: <CogIcon className="w-5 h-5"/>,
@@ -429,7 +429,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                     </button>
                     {openNavGroup === groupName && (
                         <div className="mt-2 space-y-1 pl-4 animate-fade-in">
-                            {Object.entries(group.items).map(([tabKey, tabName]) => (
+                            {Object.entries(group.items).map(([tabKey, tabValue]) => {
+                                const tabName = typeof tabValue === 'function' ? tabValue(data) : tabValue;
+                                return (
                                 <button 
                                     key={tabKey} 
                                     onClick={() => { 
@@ -439,9 +441,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                                     }} 
                                     className={`w-full text-left py-2 px-3 rounded-md text-sm font-medium transition-colors ${activeTab === tabKey ? 'bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                                 >
-                                    {tabName}
+                                    {tabName as React.ReactNode}
                                 </button>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -450,7 +453,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         <main className="flex-grow min-w-0 bg-white dark:bg-slate-800 print:bg-transparent print:p-0 print:shadow-none p-6 rounded-xl shadow-lg min-h-[80vh]">
             <div className="flex justify-between items-center mb-6 border-b pb-4 dark:border-slate-700 print:hidden">
                 <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
-                    {Object.values(navGroups).flatMap(g => Object.entries(g.items)).find(([k]) => k === activeTab)?.[1] || 'Dashboard'}
+                    {(() => {
+                        const tabValue = Object.values(navGroups).flatMap(g => Object.entries(g.items)).find(([k]) => k === activeTab)?.[1];
+                        return typeof tabValue === 'function' ? tabValue(data) : (tabValue || 'Dashboard');
+                    })()}
                 </h1>
                 
                 <div className="flex items-center gap-3">

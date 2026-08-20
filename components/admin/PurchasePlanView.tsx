@@ -300,7 +300,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
                 </div>
             ) : null}
             <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${isPrinting ? 'hidden print:hidden' : ''}`}>
-                <h3 className="text-xl font-bold">แผนการจัดซื้อปีงบประมาณ {selectedFiscalYear}</h3>
+                <h3 className="text-xl font-bold">แผนการจัดซื้อปีงบประมาณ {selectedFiscalYear} ({products.length} รายการ)</h3>
                 <div className="flex flex-wrap items-center gap-2">
                     <button onClick={handleExportExcel} className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-medium py-2 px-4 rounded-lg hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors shadow-sm flex items-center gap-2">
                         <DownloadIcon className="w-5 h-5" />
