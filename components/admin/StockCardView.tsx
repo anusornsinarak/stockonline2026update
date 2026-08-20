@@ -13,6 +13,7 @@ import PlusIcon from '../icons/PlusIcon';
 import MinusIcon from '../icons/MinusIcon';
 import PencilSquareIcon from '../icons/PencilSquareIcon';
 import MagnifyingGlassIcon from '../icons/MagnifyingGlassIcon';
+import ChevronDownIcon from '../icons/ChevronDownIcon';
 import StockAdjustmentModal from './StockAdjustmentModal';
 
 
