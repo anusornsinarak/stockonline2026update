@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryItem, Product } from '../../types';
 import TableTemplate from './TableTemplate';
 import ClockIcon from '../icons/ClockIcon';
@@ -6,6 +6,7 @@ import PencilSquareIcon from '../icons/PencilSquareIcon';
 import ChevronUpIcon from '../icons/ChevronUpIcon';
 import ChevronDownIcon from '../icons/ChevronDownIcon';
 import StockAdjustmentModal from './StockAdjustmentModal';
+import { supabaseService } from '../../services/supabaseService';
 
 const InventoryView: React.FC<{
     products: Product[];
@@ -20,6 +21,92 @@ const InventoryView: React.FC<{
     const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
     const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
     const [adjustCurrentStock, setAdjustCurrentStock] = useState(0);
+
+    // Bulk adjustment states
+    const [isBulkMode, setIsBulkMode] = useState(false);
+    const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+    const [isSavingBulk, setIsSavingBulk] = useState(false);
+
+    useEffect(() => {
+        if (isBulkMode) {
+            const savedDraft = localStorage.getItem('bulk_stock_adjustment_draft');
+            if (savedDraft) {
+                try {
+                    const parsed = JSON.parse(savedDraft);
+                    if (Object.keys(parsed).length > 0) {
+                        if (window.confirm('มีการปรับสต๊อคค้างอยู่ คุณต้องการทำต่อหรือไม่?')) {
+                            setDraftValues(parsed);
+                        } else {
+                            localStorage.removeItem('bulk_stock_adjustment_draft');
+                            setDraftValues({});
+                        }
+                    }
+                } catch (e) {
+                    localStorage.removeItem('bulk_stock_adjustment_draft');
+                }
+            } else {
+                setDraftValues({});
+            }
+        }
+    }, [isBulkMode]);
+
+    const handleDraftChange = (productId: string, val: string) => {
+        const newDraft = { ...draftValues, [productId]: val };
+        setDraftValues(newDraft);
+        localStorage.setItem('bulk_stock_adjustment_draft', JSON.stringify(newDraft));
+    };
+
+    const getPendingChanges = () => {
+        let count = 0;
+        const changes: {product: Product, delta: number}[] = [];
+        
+        products.forEach(p => {
+            const draftStr = draftValues[p.id];
+            if (draftStr !== undefined && draftStr !== '') {
+                const actual = parseInt(draftStr, 10);
+                if (!isNaN(actual)) {
+                    const current = inventoryMap.get(p.id)?.quantity ?? 0;
+                    if (actual !== current) {
+                        count++;
+                        changes.push({ product: p, delta: actual - current });
+                    }
+                }
+            }
+        });
+        return { count, changes };
+    };
+
+    const handleSaveBulk = async () => {
+        const { count, changes } = getPendingChanges();
+        if (count === 0) {
+            alert('ไม่พบรายการที่มีการเปลี่ยนแปลง (ยอดนับจริงตรงกับระบบทั้งหมด หรือไม่ได้ระบุยอด)');
+            return;
+        }
+
+        if (!window.confirm(`ยืนยันการปรับปรุงสต๊อกจำนวน ${count} รายการ ใช่หรือไม่?`)) {
+            return;
+        }
+
+        setIsSavingBulk(true);
+        try {
+            for (const change of changes) {
+                await supabaseService.adjustStockQuantity(
+                    change.product.id, 
+                    change.delta, 
+                    'ปรับปรุงจากการนับสต็อกจริง (ปรับหลายรายการ)'
+                );
+            }
+            alert('ปรับปรุงสต๊อกสำเร็จ!');
+            localStorage.removeItem('bulk_stock_adjustment_draft');
+            setDraftValues({});
+            setIsBulkMode(false);
+            onDataChange();
+        } catch (error) {
+            alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : 'ไม่สามารถปรับสต๊อกได้'));
+        } finally {
+            setIsSavingBulk(false);
+        }
+    };
 
     const inventoryMap = useMemo(() => new Map(inventory.map(item => [item.productId, item])), [inventory]);
 
@@ -67,20 +154,35 @@ const InventoryView: React.FC<{
         setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
     };
 
-    const headers = [
-        {
-            name: (
-                <button onClick={toggleSortOrder} className="flex items-center gap-1 group transition-colors hover:text-slate-800">
-                    <span>รายการ</span>
-                    {sortOrder === 'asc' ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
-                </button>
-            )
-        },
-        'หน่วย',
-        { name: 'คงเหลือในคลัง', className: 'text-right'},
-        'อัปเดตล่าสุด',
-        'การดำเนินการ'
-    ];
+    const headers = isBulkMode 
+        ? [
+            {
+                name: (
+                    <button onClick={toggleSortOrder} className="flex items-center gap-1 group transition-colors hover:text-slate-800">
+                        <span>รายการ</span>
+                        {sortOrder === 'asc' ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+                    </button>
+                )
+            },
+            'หน่วย',
+            { name: 'คงเหลือในระบบ', className: 'text-right'},
+            { name: 'ยอดนับจริง', className: 'text-center'},
+            { name: 'ส่วนต่าง', className: 'text-right'}
+        ]
+        : [
+            {
+                name: (
+                    <button onClick={toggleSortOrder} className="flex items-center gap-1 group transition-colors hover:text-slate-800">
+                        <span>รายการ</span>
+                        {sortOrder === 'asc' ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+                    </button>
+                )
+            },
+            'หน่วย',
+            { name: 'คงเหลือในคลัง', className: 'text-right'},
+            'อัปเดตล่าสุด',
+            'การดำเนินการ'
+        ];
 
     const openAdjustModal = (product: Product, currentStock: number) => {
         setAdjustProduct(product);
@@ -90,53 +192,107 @@ const InventoryView: React.FC<{
 
     return (
         <div>
-            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <label htmlFor="search-inventory" className="block text-sm font-medium text-slate-700">
-                    ค้นหารายการ
-                </label>
-                <input
-                    id="search-inventory"
-                    type="text"
-                    placeholder="พิมพ์ชื่อเวชภัณฑ์..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="mt-1 w-full md:w-1/2 px-3 py-2 border border-slate-300 rounded-lg shadow-sm"
-                    autoComplete="off"
-                />
+            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col md:flex-row gap-4 items-end justify-between">
+                <div className="w-full md:w-1/2">
+                    <label htmlFor="search-inventory" className="block text-sm font-medium text-slate-700">
+                        ค้นหารายการ
+                    </label>
+                    <input
+                        id="search-inventory"
+                        type="text"
+                        placeholder="พิมพ์ชื่อเวชภัณฑ์..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm"
+                        autoComplete="off"
+                    />
+                </div>
+                <div>
+                    {!isBulkMode ? (
+                        <button onClick={() => setIsBulkMode(true)} className="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg shadow hover:bg-sky-700 transition-colors flex items-center gap-2">
+                            <PencilSquareIcon className="w-5 h-5"/>
+                            ปรับสต็อก (หลายรายการ)
+                        </button>
+                    ) : (
+                        <div className="flex gap-2">
+                            <button onClick={() => setIsBulkMode(false)} className="bg-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg shadow hover:bg-slate-400 transition-colors">
+                                ยกเลิก / กลับ
+                            </button>
+                            <button onClick={handleSaveBulk} disabled={isSavingBulk} className="bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg shadow hover:bg-emerald-700 transition-colors disabled:bg-emerald-400 flex items-center gap-2">
+                                {isSavingBulk ? 'กำลังบันทึก...' : 'บันทึกรายการที่ปรับ'}
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <TableTemplate headers={headers}>
-                {combinedData.map(item => (
-                    <tr key={item.product.id} className={item.quantity <= 0 ? 'bg-red-50' : 'hover:bg-slate-50/70'}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{item.product.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{item.product.unit}</td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-bold ${item.quantity <= 0 ? 'text-red-600' : 'text-slate-800'}`}>
-                            {item.quantity.toLocaleString('th-TH')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{timeSince(item.updatedAt)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                            <div className="flex items-center justify-center gap-3">
-                                <button 
-                                    onClick={() => onViewStockCard(item.product.id)} 
-                                    className="text-slate-500 hover:text-sky-600 transition-colors"
-                                    title="ดูประวัติ (Stock Card)"
-                                >
-                                    <ClockIcon className="w-5 h-5"/>
-                                </button>
-                                <button 
-                                    onClick={() => openAdjustModal(item.product, item.quantity)}
-                                    className="text-amber-500 hover:text-amber-600 transition-colors"
-                                    title="ปรับสต็อก (Physical Count)"
-                                >
-                                    <PencilSquareIcon className="w-5 h-5"/>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                ))}
+                {combinedData.map(item => {
+                    const currentQuantity = item.quantity;
+                    const draftStr = draftValues[item.product.id];
+                    let diff = 0;
+                    let hasDraft = false;
+                    
+                    if (draftStr !== undefined && draftStr !== '') {
+                        const actual = parseInt(draftStr, 10);
+                        if (!isNaN(actual)) {
+                            diff = actual - currentQuantity;
+                            hasDraft = true;
+                        }
+                    }
+
+                    return (
+                        <tr key={item.product.id} className={item.quantity <= 0 && !isBulkMode ? 'bg-red-50' : 'hover:bg-slate-50/70'}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{item.product.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{item.product.unit}</td>
+                            <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-bold ${item.quantity <= 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                                {item.quantity.toLocaleString('th-TH')}
+                            </td>
+                            {isBulkMode ? (
+                                <>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                        <input 
+                                            type="number" 
+                                            min="0"
+                                            value={draftStr !== undefined ? draftStr : ''}
+                                            onChange={(e) => handleDraftChange(item.product.id, e.target.value)}
+                                            placeholder={currentQuantity.toString()}
+                                            className="w-24 text-center border border-sky-300 rounded p-1 focus:ring-2 focus:ring-sky-500 shadow-sm"
+                                        />
+                                    </td>
+                                    <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-bold ${hasDraft && diff !== 0 ? (diff > 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>
+                                        {hasDraft && diff !== 0 ? (diff > 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()) : '-'}
+                                    </td>
+                                </>
+                            ) : (
+                                <>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{timeSince(item.updatedAt)}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                        <div className="flex items-center justify-center gap-3">
+                                            <button 
+                                                onClick={() => onViewStockCard(item.product.id)} 
+                                                className="text-slate-500 hover:text-sky-600 transition-colors"
+                                                title="ดูประวัติ (Stock Card)"
+                                            >
+                                                <ClockIcon className="w-5 h-5"/>
+                                            </button>
+                                            <button 
+                                                onClick={() => openAdjustModal(item.product, item.quantity)}
+                                                className="text-amber-500 hover:text-amber-600 transition-colors"
+                                                title="ปรับสต็อก (Physical Count)"
+                                            >
+                                                <PencilSquareIcon className="w-5 h-5"/>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </>
+                            )}
+                        </tr>
+                    );
+                })}
                  {combinedData.length === 0 && (
                     <tr>
-                        <td colSpan={5} className="text-center py-10 text-slate-500">ไม่พบรายการ</td>
+                        <td colSpan={isBulkMode ? 5 : 5} className="text-center py-10 text-slate-500">ไม่พบรายการ</td>
                     </tr>
                 )}
             </TableTemplate>
