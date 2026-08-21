@@ -259,7 +259,7 @@ const P2PExchangeDashboard: React.FC<{ user: User; department: Department }> = (
         return allProducts
             .filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()))
             .sort((a,b) => a.name.localeCompare(b.name, 'th'))
-            .slice(0, 7);
+            .slice(0, 100);
     }, [productSearchTerm, allProducts]);
 
     const renderPostings = (data: P2PExchangePosting[], context: 'tabs' | 'search') => {

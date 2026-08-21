@@ -146,7 +146,7 @@ const CreateRequisitionForDeptModal: React.FC<CreateRequisitionForDeptModalProps
         return allProducts
             .filter(p => !currentProductIds.has(p.id) && p.name.toLowerCase().includes(lowerCaseSearchTerm))
             .sort((a, b) => a.name.localeCompare(b.name, 'th'))
-            .slice(0, 7);
+            .slice(0, 100);
     }, [allProducts, items, searchTerm]);
 
     const isQuantityUnusual = (productId: string, qty: number) => {

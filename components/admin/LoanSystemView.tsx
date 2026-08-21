@@ -323,7 +323,7 @@ export const LoanSystemView: React.FC<LoanSystemViewProps> = ({ departments: ini
 
     const searchableProducts = useMemo(() => {
         if (!productSearch) return [];
-        return allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 5);
+        return allProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 100);
     }, [allProducts, productSearch]);
 
     const handlePrintSummary = () => {

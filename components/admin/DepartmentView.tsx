@@ -241,7 +241,7 @@ export const DepartmentView: React.FC<DepartmentViewProps> = ({ results, product
         return products
             .filter(p => !currentProductIds.has(p.id) && p.name.toLowerCase().includes(lowerCaseSearchTerm))
             .sort((a, b) => a.name.localeCompare(b.name, 'th'))
-            .slice(0, 7);
+            .slice(0, 100);
     };
 
     return (

@@ -145,7 +145,7 @@ const SurveyForm: React.FC<SurveyFormProps> = ({ department, isSurveyOpen, title
             p.name.toLowerCase().includes(lowerCaseSearchTerm)
         )
         .sort((a, b) => a.name.localeCompare(b.name, 'th'))
-        .slice(0, 7); // Show top 7 results
+        .slice(0, 100); // Show top 7 results
   }, [allProducts, products, searchTerm]);
   
   const handleAddProduct = async (product: Product) => {

@@ -97,7 +97,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
     const frequentlyOrderedProductsToShow = useMemo(() => {
         return frequentlyOrderedProducts
             .filter(p => !currentItemIds.has(p.id))
-            .slice(0, 15); 
+            .slice(0, 100); 
     }, [frequentlyOrderedProducts, currentItemIds]);
 
     const handleItemChange = (productId: string, field: 'quantity' | 'departmentStockOnSubmit', value: string) => {
@@ -415,7 +415,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                     p.name.toLowerCase().includes(lowerCaseSearchTerm)
                 )
                 .sort((a, b) => a.name.localeCompare(b.name, 'th'))
-                .slice(0, 20); 
+                .slice(0, 100); 
         }
         if (showSurveyItems) {
             return initialDeptProducts
@@ -425,7 +425,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
         return allProducts
             .filter(p => !currentItemIds.has(p.id))
             .sort((a, b) => a.name.localeCompare(b.name, 'th'))
-            .slice(0, 50);
+            .slice(0, 100);
 
     }, [allProducts, initialDeptProducts, currentItemIds, catalogSearchTerm, showSurveyItems]);
     

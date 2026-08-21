@@ -61,7 +61,7 @@ const CreateLoanModal: React.FC<CreateLoanModalProps> = ({ isOpen, onClose, depa
         return allProducts
             .filter(p => !currentProductIds.has(p.id) && p.name.toLowerCase().includes(lowerCaseSearchTerm))
             .sort((a, b) => a.name.localeCompare(b.name, 'th'))
-            .slice(0, 7);
+            .slice(0, 100);
     }, [allProducts, items, searchTerm]);
 
     const handleSubmit = async () => {
