@@ -18,6 +18,8 @@ interface ActiveAnnouncement {
     content: string;
     enabled: boolean;
     isOffCycleWeek?: boolean;
+    systemClosed?: boolean;
+    systemClosedMessage?: string;
 }
 
 const ManageAnnouncementsView: React.FC = () => {
@@ -222,6 +224,32 @@ const ManageAnnouncementsView: React.FC = () => {
                             className={`relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 ml-4 ${fySettings.fy_survey_force ? 'bg-rose-600' : 'bg-slate-300 dark:bg-slate-600'}`}
                         >
                             <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200 ${fySettings.fy_survey_force ? 'translate-x-5' : 'translate-x-0'}`}/>
+                        </button>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-red-100 dark:bg-red-900/40 p-3 rounded-xl border border-red-300 dark:border-red-700 shadow-sm min-w-[280px]">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-bold text-red-800 dark:text-red-300">ปิดระบบคลังชั่วคราว</span>
+                            <span className="text-xs text-red-600 dark:text-red-400 font-medium truncate max-w-[200px]">{activeConfig.systemClosedMessage || 'ระงับการใช้งานระบบ'}</span>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                const newClosed = !activeConfig.systemClosed;
+                                let msg = activeConfig.systemClosedMessage || '';
+                                if (newClosed) {
+                                    const inputMsg = window.prompt("ระบุข้อความแจ้งเตือนเมื่อปิดระบบ (เช่น 'ปรับปรุงระบบชั่วคราว')", msg);
+                                    if (inputMsg === null) return; // User cancelled
+                                    msg = inputMsg || "ระบบปิดปรับปรุงชั่วคราว";
+                                }
+                                const newConfig = { ...activeConfig, systemClosed: newClosed, systemClosedMessage: msg };
+                                setActiveConfig(newConfig);
+                                await supabaseService.saveAnnouncementSettings(newConfig as any);
+                                setStatusMessage({ type: 'success', text: `บันทึกการ${newClosed ? 'ปิด' : 'เปิด'}ระบบเรียบร้อยแล้ว` });
+                                setTimeout(() => setStatusMessage(null), 3000);
+                            }}
+                            className={`relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 ml-4 ${activeConfig.systemClosed ? 'bg-red-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                        >
+                            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200 ${activeConfig.systemClosed ? 'translate-x-5' : 'translate-x-0'}`}/>
                         </button>
                     </div>
                 </div>

@@ -1,3 +1,4 @@
+import ExclamationTriangleIcon from "./components/icons/ExclamationTriangleIcon";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
@@ -66,13 +67,18 @@ const App: React.FC = () => {
   const [fySettings, setFySettings] = useState({ fy_survey_open: false, fy_survey_force: false, fy_survey_year: 2570, fy_previous_year: 2569 });
   const [isRequisitionOpen] = useState(true);
   const [documentSettings, setDocumentSettings] = useState<DocumentSettings | null>(null);
+  const [activeAnnouncement, setActiveAnnouncement] = useState<{ id: string | null; content: string; enabled: boolean; isOffCycleWeek?: boolean; systemClosed?: boolean; systemClosedMessage?: string; } | null>(null);
 
   const fetchFySettings = useCallback(async () => {
     try {
-        const settings = await supabaseService.getFySurveySettings();
+        const [settings, announcement] = await Promise.all([
+            supabaseService.getFySurveySettings(),
+            supabaseService.getAnnouncementSettings()
+        ]);
         setFySettings(settings);
+        setActiveAnnouncement(announcement);
     } catch (e) {
-        console.error("Failed to fetch FY settings", e);
+        console.error("Failed to fetch settings", e);
     }
   }, []);
 
@@ -225,6 +231,19 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (activeAnnouncement?.systemClosed && user?.role !== 'Admin') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-fade-in">
+                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-full mb-6 mt-10">
+                    <ExclamationTriangleIcon className="w-20 h-20" />
+                </div>
+                <h2 className="text-4xl font-black text-slate-800 dark:text-slate-100 mb-4 tracking-tighter">ระบบปิดให้บริการชั่วคราว</h2>
+                <p className="text-xl font-bold text-slate-600 dark:text-slate-300 max-w-lg mx-auto bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
+                    {activeAnnouncement.systemClosedMessage || 'ขออภัย ระบบกำลังปิดปรับปรุงชั่วคราว โปรดกลับมาใช้งานใหม่ภายหลัง'}
+                </p>
+            </div>
+        );
+    }
     if (user?.role === 'Borrower') {
         return <LoanSystemView departments={[]} allProducts={[]} currentUser={user} isPublicMode={true} />;
     }
