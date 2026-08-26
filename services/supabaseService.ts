@@ -842,11 +842,46 @@ export const supabaseService = {
     },
 
     async adjustStockQuantity(productId: string, delta: number, notes: string) {
-        await supabase.rpc('adjust_stock_quantity', { p_product_id: productId, p_adjustment_quantity: delta, p_notes: notes });
+        if (delta === 0) return;
+
+        // Instead of directly updating stock which doesn't leave a paper trail in the stock card,
+        // we create an 'Other' GRN for the adjustment and automatically approve it.
+        // This will correctly log a 'receive' (or negative receive for issue) transaction in the stock card view.
+        
+        const grnPayload = {
+            sourceType: 'Other',
+            notes: `[ปรับปรุงยอดจากระบบ] ${notes}`,
+            items: [{ 
+                productId: productId, 
+                quantityReceived: delta, 
+                expiryDate: null, 
+                lotNumber: null 
+            }]
+        };
+        
+        const { data: newGrn, error } = await supabase.rpc('create_grn_with_items', { 
+            p_source_type: 'Other', 
+            p_po_id: null, 
+            p_notes: grnPayload.notes, 
+            p_items: grnPayload.items as any 
+        });
+
+        if (error) throw error;
+
+        // The RPC returns the new GRN object/row as JSON.
+        const grnId = typeof newGrn === 'string' ? newGrn : (newGrn as any)?.id;
+        
+        if (grnId) {
+            await this.approveGoodsReceivedNote(grnId);
+        } else {
+            // Fallback if RPC format is unexpected
+            await supabase.rpc('adjust_stock_quantity', { p_product_id: productId, p_adjustment_quantity: delta, p_notes: notes });
+        }
+
         await this.logSystemEvent({
             level: 'INFO',
             event: 'STOCK_ADJUSTED',
-            message: `Stock for product ${productId} adjusted by ${delta}. Notes: ${notes}`
+            message: `Stock for product ${productId} adjusted by ${delta}. GRN: ${grnId || 'fallback'}`
         });
     },
 
