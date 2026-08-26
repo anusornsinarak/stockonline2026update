@@ -101,19 +101,7 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
             const startDate = new Date(dateRange.start);
             startDate.setHours(0, 0, 0, 0);
 
-            // Calculate true historical sum from transactions
-            let totalHistoricalSum = 0;
-            (allHistory || []).forEach(tx => {
-                totalHistoricalSum += (tx.quantityIn || 0) - (tx.quantityOut || 0);
-            });
-
-            // Get actual current inventory
-            const actualCurrentInventory = inventory.find(i => i.productId === selectedProduct.id)?.quantity || 0;
-            
-            // Any difference is due to manual stock adjustments that aren't in the transactions view
-            const unrecordedAdjustment = actualCurrentInventory - totalHistoricalSum;
-
-            let openingBalance = unrecordedAdjustment;
+            let openingBalance = 0;
 
             (allHistory || []).forEach(tx => {
                 if (new Date(tx.transactionDate) < startDate) {
@@ -124,7 +112,7 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
             const transactionsInRange = (allHistory || []).filter(tx => new Date(tx.transactionDate) >= startDate);
             const openingRecord: (Partial<ProductTransaction> & { balance: number }) = {
                 transactionDate: startDate,
-                transactionType: unrecordedAdjustment !== 0 ? 'ยอดยกมา (รวมปรับปรุง)' : 'ยอดยกมา',
+                transactionType: 'ยอดยกมา',
                 referenceDocument: '-',
                 departmentName: null,
                 quantityIn: 0,
