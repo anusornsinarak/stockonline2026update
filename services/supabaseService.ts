@@ -864,10 +864,10 @@ export const supabaseService = {
             sourceType: 'Other',
             notes: `[ปรับปรุงยอดจากระบบ] ${notes}`,
             items: [{ 
-                productId: productId, 
-                quantityReceived: delta, 
-                expiryDate: null, 
-                lotNumber: null 
+                product_id: productId, 
+                quantity_received: delta, 
+                expiry_date: null, 
+                lot_number: null 
             }]
         };
         
@@ -1537,7 +1537,13 @@ export const supabaseService = {
     },
 
     async createGoodsReceivedNote(payload: any) {
-        return await supabase.rpc('create_grn_with_items', { p_source_type: payload.sourceType, p_po_id: payload.purchaseOrderId || null, p_notes: payload.notes || null, p_items: payload.items as any });
+        const mappedItems = payload.items.map((i: any) => ({
+            product_id: i.productId,
+            quantity_received: i.quantityReceived,
+            expiry_date: i.expiryDate ? (i.expiryDate instanceof Date ? i.expiryDate.toISOString() : i.expiryDate) : null,
+            lot_number: i.lotNumber || null
+        }));
+        return await supabase.rpc('create_grn_with_items', { p_source_type: payload.sourceType, p_po_id: payload.purchaseOrderId || null, p_notes: payload.notes || null, p_items: mappedItems as any });
     },
 
     async approveGoodsReceivedNote(grnId: string) {

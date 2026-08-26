@@ -88,7 +88,8 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({ isOpen, onC
             alert('ปรับสต็อกสำเร็จ!');
             onSuccess();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
+            console.error("Stock adjustment error:", err);
+            setError(err instanceof Error ? err.message : JSON.stringify(err));
         } finally {
             setIsSaving(false);
         }
