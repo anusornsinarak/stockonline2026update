@@ -98,27 +98,14 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         setError('');
         try {
             const allHistory = await supabaseService.getProductTransactionHistory(selectedProduct.id, dateRange.end);
-            
-            // Get current actual inventory to anchor our calculations
-            const currentActualInventory = inventory.find(i => i.productId === selectedProduct.id)?.quantity || 0;
-
-            // Calculate total net change from ALL history records (all time)
-            let totalNetChangeAllTime = 0;
-            (allHistory || []).forEach(tx => {
-                totalNetChangeAllTime += (tx.quantityIn || 0) - (tx.quantityOut || 0);
-            });
-
-            // The absolute starting balance before ANY transaction happened
-            const absoluteStartingBalance = currentActualInventory - totalNetChangeAllTime;
-
             const startDate = new Date(dateRange.start);
             startDate.setHours(0, 0, 0, 0);
 
-            let openingBalance = absoluteStartingBalance;
+            let openingBalance = 0;
 
             (allHistory || []).forEach(tx => {
                 if (new Date(tx.transactionDate) < startDate) {
-                    openingBalance += (tx.quantityIn || 0) - (tx.quantityOut || 0);
+                    openingBalance += tx.quantityIn - tx.quantityOut;
                 }
             });
 
@@ -135,7 +122,7 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
 
             let runningBalance = openingBalance;
             const processedTransactions = transactionsInRange.map(tx => {
-                runningBalance += (tx.quantityIn || 0) - (tx.quantityOut || 0);
+                runningBalance += tx.quantityIn - tx.quantityOut;
                 return { ...tx, balance: runningBalance };
             });
 
@@ -145,7 +132,7 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         } finally {
             setIsLoading(false);
         }
-    }, [selectedProduct, dateRange, inventory]);
+    }, [selectedProduct, dateRange]);
 
 
     useEffect(() => {
