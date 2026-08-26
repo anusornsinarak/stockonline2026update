@@ -860,35 +860,25 @@ export const supabaseService = {
         // we create an 'Other' GRN for the adjustment and automatically approve it.
         // This will correctly log a 'receive' (or negative receive for issue) transaction in the stock card view.
         
-        const grnPayload = {
-            sourceType: 'Other',
+        const { data: newGrn, error } = await supabase.from('goods_received_notes').insert({
+            source_type: 'Other',
             notes: `[ปรับปรุงยอดจากระบบ] ${notes}`,
-            items: [{ 
-                product_id: productId, 
-                quantity_received: delta, 
-                expiry_date: null, 
-                lot_number: null 
-            }]
-        };
-        
-        const { data: newGrn, error } = await supabase.rpc('create_grn_with_items', { 
-            p_source_type: 'Other', 
-            p_po_id: null, 
-            p_notes: grnPayload.notes, 
-            p_items: grnPayload.items as any 
-        });
+            status: 'Pending Approval'
+        }).select().single();
 
         if (error) throw error;
-
-        // The RPC returns the new GRN object/row as JSON.
-        const grnId = typeof newGrn === 'string' ? newGrn : (newGrn as any)?.id;
         
-        if (grnId) {
-            await this.approveGoodsReceivedNote(grnId);
-        } else {
-            // Fallback if RPC format is unexpected
-            await supabase.rpc('adjust_stock_quantity', { p_product_id: productId, p_adjustment_quantity: delta, p_notes: notes });
-        }
+        const { error: itemsError } = await supabase.from('goods_received_items').insert([{
+            grn_id: newGrn.id,
+            product_id: productId,
+            quantity_received: delta,
+            expiry_date: null,
+            lot_number: null
+        }]);
+
+        if (itemsError) throw itemsError;
+
+        await this.approveGoodsReceivedNote(newGrn.id);
 
         await this.logSystemEvent({
             level: 'INFO',
@@ -1537,13 +1527,32 @@ export const supabaseService = {
     },
 
     async createGoodsReceivedNote(payload: any) {
+        const { data: grn, error: grnError } = await supabase.from('goods_received_notes').insert({
+            source_type: payload.sourceType,
+            purchase_order_id: payload.purchaseOrderId || null,
+            notes: payload.notes || null,
+            status: 'Pending Approval'
+        }).select().single();
+
+        if (grnError) throw grnError;
+
         const mappedItems = payload.items.map((i: any) => ({
-            product_id: i.productId,
-            quantity_received: i.quantityReceived,
+            grn_id: grn.id,
+            product_id: i.productId || i.product_id,
+            quantity_received: i.quantityReceived || i.quantity_received,
             expiry_date: i.expiryDate ? (i.expiryDate instanceof Date ? i.expiryDate.toISOString() : i.expiryDate) : null,
-            lot_number: i.lotNumber || null
+            lot_number: (i.lotNumber || i.lot_number) || null
         }));
-        return await supabase.rpc('create_grn_with_items', { p_source_type: payload.sourceType, p_po_id: payload.purchaseOrderId || null, p_notes: payload.notes || null, p_items: mappedItems as any });
+
+        const { error: itemsError } = await supabase.from('goods_received_items').insert(mappedItems);
+        
+        if (itemsError) {
+            // Rollback GRN if items fail
+            await supabase.from('goods_received_notes').delete().eq('id', grn.id);
+            throw itemsError;
+        }
+
+        return { data: grn };
     },
 
     async approveGoodsReceivedNote(grnId: string) {
