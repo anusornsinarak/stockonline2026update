@@ -883,7 +883,7 @@ export const supabaseService = {
         await this.logSystemEvent({
             level: 'INFO',
             event: 'STOCK_ADJUSTED',
-            message: `Stock for product ${productId} adjusted by ${delta}. GRN: ${grnId || 'fallback'}`
+            message: `Stock for product ${productId} adjusted by ${delta}. GRN: ${newGrn?.id || 'fallback'}`
         });
     },
 
