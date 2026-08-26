@@ -190,6 +190,23 @@ const InventoryView: React.FC<{
         setIsAdjustModalOpen(true);
     };
 
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleSync = async () => {
+        if (!window.confirm('คุณต้องการคำนวณและซิงค์ยอดคงเหลือของทุกรายการให้ตรงกับประวัติ Stock Card หรือไม่?\n(ใช้เพื่อแก้ไขปัญหายอดคงคลังปัจจุบันไม่ตรงกับยอดใน Stock Card)')) return;
+        
+        setIsSyncing(true);
+        try {
+            await supabaseService.syncAllInventoryWithTransactions();
+            alert('ซิงค์ข้อมูลเรียบร้อยแล้ว');
+            onDataChange();
+        } catch (error) {
+            alert('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : 'ไม่สามารถซิงค์ได้'));
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     return (
         <div>
             <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col md:flex-row gap-4 items-end justify-between">
@@ -207,7 +224,16 @@ const InventoryView: React.FC<{
                         autoComplete="off"
                     />
                 </div>
-                <div>
+                <div className="flex gap-2">
+                    <button 
+                        onClick={handleSync} 
+                        disabled={isSyncing}
+                        className="bg-orange-100 text-orange-700 font-bold py-2 px-4 rounded-lg shadow-sm hover:bg-orange-200 transition-colors disabled:opacity-50 flex items-center gap-2"
+                        title="คำนวณยอดคงคลังใหม่จากประวัติการทำรายการทั้งหมด"
+                    >
+                        <ClockIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`}/>
+                        {isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ยอดกับ Stock Card'}
+                    </button>
                     {!isBulkMode ? (
                         <button onClick={() => setIsBulkMode(true)} className="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg shadow hover:bg-sky-700 transition-colors flex items-center gap-2">
                             <PencilSquareIcon className="w-5 h-5"/>

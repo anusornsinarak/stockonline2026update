@@ -841,6 +841,18 @@ export const supabaseService = {
         }));
     },
 
+    async syncAllInventoryWithTransactions() {
+        const { data: products } = await supabase.from('products').select('id');
+        if (!products) return;
+        
+        for (const p of products) {
+            const { data } = await supabase.rpc('get_product_transactions', { p_product_id: p.id, p_end_date: new Date().toISOString() });
+            let sum = 0;
+            (data as any[] || []).forEach(tx => sum += (tx.quantity_in || 0) - (tx.quantity_out || 0));
+            await supabase.from('inventory').update({ quantity: sum } as any).eq('product_id', p.id);
+        }
+    },
+
     async adjustStockQuantity(productId: string, delta: number, notes: string) {
         if (delta === 0) return;
 
