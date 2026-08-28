@@ -66,8 +66,8 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, title, className, notif
           <h1 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center justify-center gap-2">
             <span className="truncate">{title}</span>
             {title === 'แดชบอร์ด' && (
-              <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400 px-2.5 py-0.5 rounded-full whitespace-nowrap border border-slate-200 dark:border-slate-700 hidden sm:inline-block" title="อัปเดตล่าสุด: เพิ่มป๊อปอัปแจ้งเตือนให้ติดตั้งแอป (PWA) ลงมือถืออัตโนมัติ และแก้ปัญหาไอคอน/เปิดแอปไม่ได้">
-                อัปเดต: 17 ส.ค. 2026
+              <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-700/50 dark:text-slate-400 px-2.5 py-0.5 rounded-full whitespace-nowrap border border-slate-200 dark:border-slate-700 hidden sm:inline-block" title="อัปเดตล่าสุด: ปรับปรุงการแสดงผลประวัติความเคลื่อนไหว (Stock Card) และการซิงค์ยอดคงเหลือ">
+                อัปเดต: 28 ส.ค. 2026
               </span>
             )}
           </h1>
