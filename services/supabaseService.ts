@@ -890,11 +890,46 @@ export const supabaseService = {
     async getProductTransactionHistory(productId: string, endDate: string): Promise<ProductTransaction[]> {
         const { data, error } = await supabase.rpc('get_product_transactions', { p_product_id: productId, p_end_date: endDate });
         if (error) throw error;
-        return (data as any[] || []).map(t => ({
+        
+        const txs: ProductTransaction[] = (data as any[] || []).map(t => ({
             transactionDate: new Date(t.transaction_date), transactionType: t.transaction_type,
             referenceDocument: t.reference_document, departmentName: t.department_name,
             quantityIn: t.quantity_in, quantityOut: t.quantity_out, balance: t.balance
         }));
+
+        // Fetch GRNs that might be excluded by the RPC (e.g. 'Other' source_type without a PO)
+        const { data: additionalGrns } = await supabase.from('goods_received_notes')
+            .select('id, grn_number, received_date, source_type, notes, goods_received_items!inner(product_id, quantity_received)')
+            .eq('status', 'Completed')
+            .eq('goods_received_items.product_id', productId)
+            .lte('received_date', endDate);
+            
+        if (additionalGrns) {
+            for (const grn of additionalGrns) {
+                // If it's already in the list (by GRN number or ID), skip it
+                const exists = txs.some(t => t.referenceDocument === grn.grn_number || t.referenceDocument === grn.id);
+                if (exists) continue;
+                
+                const item = grn.goods_received_items.find((i: any) => i.product_id === productId);
+                if (item && item.quantity_received !== 0) {
+                    const qty = item.quantity_received;
+                    txs.push({
+                        transactionDate: new Date(grn.received_date),
+                        transactionType: grn.source_type === 'Return' ? 'รับคืน' : 'รับเข้า',
+                        referenceDocument: grn.grn_number || grn.id,
+                        departmentName: grn.notes || 'ปรับปรุงยอดจากระบบ',
+                        quantityIn: qty > 0 ? qty : 0,
+                        quantityOut: qty < 0 ? Math.abs(qty) : 0,
+                        balance: 0 // Will be recalculated by the frontend
+                    });
+                }
+            }
+        }
+        
+        // Ensure transactions are sorted chronologically
+        txs.sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime());
+        
+        return txs;
     },
 
     // Surveys
