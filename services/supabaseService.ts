@@ -888,7 +888,10 @@ export const supabaseService = {
     },
 
     async getProductTransactionHistory(productId: string, endDate: string): Promise<ProductTransaction[]> {
-        const { data, error } = await supabase.rpc('get_product_transactions', { p_product_id: productId, p_end_date: endDate });
+        // Ensure endDate includes the full day
+        const endDateTime = endDate.includes('T') ? endDate : `${endDate}T23:59:59.999Z`;
+
+        const { data, error } = await supabase.rpc('get_product_transactions', { p_product_id: productId, p_end_date: endDateTime });
         if (error) throw error;
         
         const txs: ProductTransaction[] = (data as any[] || []).map(t => ({
@@ -902,7 +905,7 @@ export const supabaseService = {
             .select('id, grn_number, received_date, source_type, notes, goods_received_items!inner(product_id, quantity_received)')
             .eq('status', 'Completed')
             .eq('goods_received_items.product_id', productId)
-            .lte('received_date', endDate);
+            .lte('received_date', endDateTime);
             
         if (additionalGrns) {
             for (const grn of additionalGrns) {
