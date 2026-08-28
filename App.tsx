@@ -43,19 +43,6 @@ const AlertBanner: React.FC<{ message: string; onMute: () => void; }> = ({ messa
     );
 };
 
-const UpdateBanner: React.FC = () => {
-    const [isVisible, setIsVisible] = useState(true);
-    if (!isVisible) return null;
-    return (
-        <div className="bg-indigo-600 text-white px-4 py-2 text-center text-sm font-medium flex justify-between items-center z-[101] relative">
-            <span className="flex-1 text-center">🚀 ระบบอัปเดตล่าสุด: เพิ่มป๊อปอัปแจ้งเตือนให้ติดตั้งแอป (PWA) ลงมือถืออัตโนมัติ และแก้ปัญหาไอคอน/เปิดแอปไม่ได้ (17 ส.ค. 2026)</span>
-            <button onClick={() => setIsVisible(false)} className="hover:bg-indigo-700 px-2 py-1 rounded-full transition-colors ml-2">
-                ✕
-            </button>
-        </div>
-    );
-};
-
 const appSubtitle = "สำหรับหน่วยงานภายในโรงพยาบาลและ รพ.สต.";
 
 const App: React.FC = () => {
@@ -326,7 +313,6 @@ const App: React.FC = () => {
               <AuthPortal appTitle={appTitle} appSubtitle={appSubtitle} />
             ) : (
               <>
-                <UpdateBanner />
                 <Header
                   user={user}
                   onLogout={handleLogout}
