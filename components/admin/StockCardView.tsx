@@ -122,8 +122,21 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
 
             let runningBalance = openingBalance;
             const processedTransactions = transactionsInRange.map(tx => {
-                runningBalance += tx.quantityIn - tx.quantityOut;
-                return { ...tx, balance: runningBalance };
+                let qIn = tx.quantityIn || 0;
+                let qOut = tx.quantityOut || 0;
+                
+                // Normalize negative inputs so they show in the correct column
+                if (qIn < 0) {
+                    qOut += Math.abs(qIn);
+                    qIn = 0;
+                }
+                if (qOut < 0) {
+                    qIn += Math.abs(qOut);
+                    qOut = 0;
+                }
+
+                runningBalance += qIn - qOut;
+                return { ...tx, quantityIn: qIn, quantityOut: qOut, balance: runningBalance };
             });
 
             setTransactions([openingRecord, ...processedTransactions]);
