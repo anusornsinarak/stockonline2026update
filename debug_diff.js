@@ -1,48 +1,73 @@
-import { loadEnv } from 'vite';
 import { createClient } from '@supabase/supabase-js';
-
-const env = loadEnv('development', process.cwd(), '');
-const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
+const supabase = createClient('https://olfabhkhyfibanhsxwpg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sZmFiaGtoeWZpYmFuaHN4d3BnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0NzYwNzEsImV4cCI6MjA3MDA1MjA3MX0.6KBVmZl20SzfumzsTRy9RaRaj6ig8NZwBuOumarY8hg');
 
 async function run() {
-    // Find the product
-    const { data: prods } = await supabase.from('products').select('id, name').ilike('name', '%2%CHG%');
-    if (!prods || prods.length === 0) return console.log("Product not found");
-    const pid = prods[0].id;
-    console.log("Product:", prods[0].name, pid);
-
-    // Get from getProductUsageHistory logic
-    const { data: reqItems } = await supabase.from('requisition_items')
-        .select(`approved_quantity, requisitions!inner(created_at, status, requisition_number)`)
-        .eq('product_id', pid)
-        .in('requisitions.status', ['PartiallyApproved', 'Ready', 'Completed']);
+    const pid = '418753eb-59dd-400e-9a2f-7f7ca2f5b6b6'; // 2% CHG
     
-    let sumUsage = 0;
-    reqItems.forEach(item => {
-        const d = new Date(item.requisitions.created_at);
-        const m = d.getMonth();
-        const y = d.getFullYear();
-        const fy = (m >= 9 ? y + 1 : y) + 543;
-        if (fy === 2569) {
-            sumUsage += item.approved_quantity || 0;
-            console.log("Req:", item.requisitions.requisition_number, "Date:", item.requisitions.created_at, "Qty:", item.approved_quantity);
+    // 1. Get from requisition_items (Usage logic)
+    let reqSum = 0;
+    const { data: reqs } = await supabase.from('requisition_items')
+        .select(`id, quantity, approved_quantity, requisitions!inner(requisition_number, created_at, status)`)
+        .eq('product_id', pid)
+        .in('requisitions.status', ['Picking', 'PartiallyApproved', 'Ready', 'Completed']);
+        
+    const reqList = [];
+    reqs.forEach(item => {
+        const date = new Date(item.requisitions.created_at);
+        const month = date.getMonth();
+        const yearCE = date.getFullYear();
+        const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
+        const fiscalYearBE = fiscalYearCE + 543;
+        
+        if (fiscalYearBE === 2569) {
+            const qty = item.approved_quantity !== null ? item.approved_quantity : item.quantity;
+            reqSum += qty;
+            reqList.push({ id: item.requisitions.requisition_number, qty, date: item.requisitions.created_at });
         }
     });
-    console.log("Total Usage (FY2569):", sumUsage);
-
-    // Get from getProductTransactionHistory logic
-    const { data: txs } = await supabase.rpc('get_product_transactions', { p_product_id: pid, p_end_date: '2026-08-31T23:59:59.999Z' });
-    let sumTx = 0;
+    console.log("Usage Sum:", reqSum);
+    
+    // 2. Get from product_transactions + req items (Stock Card logic)
+    const { data: txs } = await supabase.from('product_transactions')
+        .select('*')
+        .eq('product_id', pid)
+        .eq('transaction_type', 'เบิกจ่าย');
+        
+    const reqMap = new Map();
+    reqs.forEach(item => {
+        if (item.requisitions.requisition_number && item.approved_quantity !== null) {
+            reqMap.set(item.requisitions.requisition_number, item.approved_quantity);
+        }
+    });
+    
+    let stockSum = 0;
+    const startDate = new Date('2025-10-01T00:00:00.000Z');
+    const endDate = new Date('2026-08-31T23:59:59.999Z');
+    const txList = [];
+    
     txs.forEach(tx => {
+        let qOut = tx.quantity_out || 0;
+        if (tx.reference_document && reqMap.has(tx.reference_document)) {
+            qOut = reqMap.get(tx.reference_document);
+        }
+        
         const d = new Date(tx.transaction_date);
-        const m = d.getMonth();
-        const y = d.getFullYear();
-        const fy = (m >= 9 ? y + 1 : y) + 543;
-        if (fy === 2569 && tx.transaction_type === 'เบิกจ่าย') {
-            sumTx += tx.quantity_out || 0;
-            console.log("Tx:", tx.reference_document, "Date:", tx.transaction_date, "QtyOut:", tx.quantity_out);
+        if (d >= startDate && d <= endDate) {
+            stockSum += qOut;
+            txList.push({ id: tx.reference_document, qty: qOut, date: tx.transaction_date });
         }
     });
-    console.log("Total Tx Out (FY2569):", sumTx);
+    
+    console.log("Stock Sum:", stockSum);
+    
+    // Compare lists
+    const reqIds = reqList.map(r => r.id);
+    const txIds = txList.map(t => t.id);
+    
+    const onlyInReq = reqList.filter(r => !txIds.includes(r.id));
+    const onlyInTx = txList.filter(t => !reqIds.includes(t.id));
+    
+    console.log("Only in Req (Usage):", onlyInReq);
+    console.log("Only in Tx (Stock):", onlyInTx);
 }
 run();

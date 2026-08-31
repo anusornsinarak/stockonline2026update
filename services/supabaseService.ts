@@ -1292,51 +1292,71 @@ export const supabaseService = {
 
     async getProductUsageHistory(): Promise<ProductUsageHistory[]> {
         const usageMap = new Map<string, number>();
-        let page = 0;
+        
+        // 1. Fetch all requisition items for the override map
+        const reqMap = new Map<string, number>();
+        let reqPage = 0;
+        let reqHasMore = true;
         const pageSize = 1000;
-        let hasMore = true;
 
-        while (hasMore) {
+        while (reqHasMore) {
             const { data, error } = await supabase.from('requisition_items')
                 .select(`
-                    product_id,
-                    quantity,
                     approved_quantity,
-                    requisitions!inner (
-                        created_at,
-                        status
-                    )
+                    requisitions!inner (requisition_number)
                 `)
-                .in('requisitions.status', ['Picking', 'PartiallyApproved', 'Ready', 'Completed'])
-                .range(page * pageSize, (page + 1) * pageSize - 1);
+                .range(reqPage * pageSize, (reqPage + 1) * pageSize - 1);
 
-            if (error) {
-                console.error("Error fetching usage history", error);
-                break;
-            }
-
-            if (!data || data.length === 0) {
-                hasMore = false;
+            if (error || !data || data.length === 0) {
+                reqHasMore = false;
                 break;
             }
 
             data.forEach((item: any) => {
-                const date = new Date(item.requisitions.created_at);
+                if (item.requisitions?.requisition_number && item.approved_quantity !== null && item.approved_quantity !== undefined) {
+                    reqMap.set(item.requisitions.requisition_number, item.approved_quantity);
+                }
+            });
+
+            if (data.length < pageSize) reqHasMore = false;
+            else reqPage++;
+        }
+
+        // 2. Fetch all product transactions (paginated)
+        let txPage = 0;
+        let txHasMore = true;
+
+        while (txHasMore) {
+            const { data: txs, error } = await supabase.from('product_transactions')
+                .select('product_id, transaction_date, quantity_out, transaction_type, reference_document')
+                .eq('transaction_type', 'เบิกจ่าย')
+                .range(txPage * pageSize, (txPage + 1) * pageSize - 1);
+
+            if (error || !txs || txs.length === 0) {
+                txHasMore = false;
+                break;
+            }
+
+            txs.forEach((tx: any) => {
+                const date = new Date(tx.transaction_date);
                 const month = date.getMonth();
                 const yearCE = date.getFullYear();
                 const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
                 const fiscalYearBE = fiscalYearCE + 543;
                 
-                const key = `${item.product_id}_${fiscalYearBE}`;
-                const qty = (item.approved_quantity !== null && item.approved_quantity !== undefined) ? item.approved_quantity : (item.quantity || 0);
+                const key = `${tx.product_id}_${fiscalYearBE}`;
+                
+                // Use override if available, otherwise raw quantity_out
+                let qty = tx.quantity_out || 0;
+                if (tx.reference_document && reqMap.has(tx.reference_document)) {
+                    qty = reqMap.get(tx.reference_document)!;
+                }
+                
                 usageMap.set(key, (usageMap.get(key) || 0) + qty);
             });
 
-            if (data.length < pageSize) {
-                hasMore = false;
-            } else {
-                page++;
-            }
+            if (txs.length < pageSize) txHasMore = false;
+            else txPage++;
         }
 
         const history: ProductUsageHistory[] = [];
