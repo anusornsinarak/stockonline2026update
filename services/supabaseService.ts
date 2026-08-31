@@ -1272,17 +1272,9 @@ export const supabaseService = {
     },
 
     async getProductUsageHistory(): Promise<ProductUsageHistory[]> {
-        const { data, error } = await supabase.from('requisition_items')
-            .select(`
-                product_id,
-                quantity,
-                approved_quantity,
-                requisitions!inner (
-                    created_at,
-                    status
-                )
-            `)
-            .in('requisitions.status', ['Picking', 'PartiallyApproved', 'Ready', 'Completed']);
+        const { data: txs, error } = await supabase.from('product_transactions')
+            .select('product_id, transaction_date, quantity_out')
+            .eq('transaction_type', 'เบิกจ่าย');
 
         if (error) {
             console.error("Error fetching usage history", error);
@@ -1291,15 +1283,15 @@ export const supabaseService = {
 
         const usageMap = new Map<string, number>();
 
-        (data || []).forEach((item: any) => {
-            const date = new Date(item.requisitions.created_at);
+        (txs || []).forEach((tx: any) => {
+            const date = new Date(tx.transaction_date);
             const month = date.getMonth();
             const yearCE = date.getFullYear();
             const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
             const fiscalYearBE = fiscalYearCE + 543;
             
-            const key = `${item.product_id}_${fiscalYearBE}`;
-            const qty = (item.approved_quantity !== null && item.approved_quantity !== undefined) ? item.approved_quantity : (item.quantity || 0);
+            const key = `${tx.product_id}_${fiscalYearBE}`;
+            const qty = tx.quantity_out || 0;
             usageMap.set(key, (usageMap.get(key) || 0) + qty);
         });
 
