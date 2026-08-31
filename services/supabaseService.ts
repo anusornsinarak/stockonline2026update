@@ -1275,13 +1275,14 @@ export const supabaseService = {
         const { data, error } = await supabase.from('requisition_items')
             .select(`
                 product_id,
+                quantity,
                 approved_quantity,
                 requisitions!inner (
                     created_at,
                     status
                 )
             `)
-            .in('requisitions.status', ['PartiallyApproved', 'Ready', 'Completed']);
+            .in('requisitions.status', ['Picking', 'PartiallyApproved', 'Ready', 'Completed']);
 
         if (error) {
             console.error("Error fetching usage history", error);
@@ -1298,7 +1299,7 @@ export const supabaseService = {
             const fiscalYearBE = fiscalYearCE + 543;
             
             const key = `${item.product_id}_${fiscalYearBE}`;
-            const qty = item.approved_quantity || 0;
+            const qty = (item.approved_quantity !== null && item.approved_quantity !== undefined) ? item.approved_quantity : (item.quantity || 0);
             usageMap.set(key, (usageMap.get(key) || 0) + qty);
         });
 
@@ -1921,7 +1922,10 @@ export const supabaseService = {
             
             if (loanedItems.length > 0) {
                 // Determine status based on returned quantity
-                const allReturned = loanedItems.every((i: any) => (i.returned_quantity || 0) >= (i.approved_quantity || i.quantity));
+                const allReturned = loanedItems.every((i: any) => {
+                    const expectedQty = (i.approved_quantity !== null && i.approved_quantity !== undefined) ? i.approved_quantity : i.quantity;
+                    return (i.returned_quantity || 0) >= expectedQty;
+                });
                 
                 derivedTxns.push({
                     id: `req-${req.id}`,
@@ -1939,7 +1943,7 @@ export const supabaseService = {
                         id: i.id, // Use requisition_item_id
                         loanTransactionId: `req-${req.id}`,
                         productId: i.product_id,
-                        quantity: i.approved_quantity || i.quantity, // Use approved quantity as loaned amount
+                        quantity: (i.approved_quantity !== null && i.approved_quantity !== undefined) ? i.approved_quantity : i.quantity, // Use approved quantity as loaned amount
                         returnedQuantity: i.returned_quantity || 0,
                         isDerived: true,
                         originalRequisitionItemId: i.id,
@@ -1967,7 +1971,7 @@ export const supabaseService = {
         if (fetchError) throw fetchError;
         if (!item) throw new Error('Item not found');
         
-        const targetQty = item.approved_quantity || item.quantity;
+        const targetQty = (item.approved_quantity !== null && item.approved_quantity !== undefined) ? item.approved_quantity : item.quantity;
         // Keep status as 'Loaned' because 'LoanFulfilled' might not be in the DB enum yet
         // The UI/Service logic uses returned_quantity to determine if a loan is completed
         const status = 'Loaned';
