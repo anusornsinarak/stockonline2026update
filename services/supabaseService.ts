@@ -906,14 +906,33 @@ export const supabaseService = {
         }));
 
         // Fetch Requisition Items to override quantityOut with approved_quantity
-        const { data: reqItems } = await supabase.from('requisition_items')
-            .select(`
-                approved_quantity,
-                requisitions!inner(requisition_number)
-            `)
-            .eq('product_id', productId);
+        let reqItems: any[] = [];
+        let reqPage = 0;
+        let reqHasMore = true;
+        const reqPageSize = 1000;
 
-        if (reqItems) {
+        while (reqHasMore) {
+            const { data } = await supabase.from('requisition_items')
+                .select(`
+                    approved_quantity,
+                    requisitions!inner(requisition_number)
+                `)
+                .eq('product_id', productId)
+                .range(reqPage * reqPageSize, (reqPage + 1) * reqPageSize - 1);
+            
+            if (data && data.length > 0) {
+                reqItems = reqItems.concat(data);
+                if (data.length < reqPageSize) {
+                    reqHasMore = false;
+                } else {
+                    reqPage++;
+                }
+            } else {
+                reqHasMore = false;
+            }
+        }
+
+        if (reqItems.length > 0) {
             const reqMap = new Map<string, number>();
             reqItems.forEach((item: any) => {
                 if (item.requisitions?.requisition_number && item.approved_quantity !== null) {
@@ -1272,28 +1291,53 @@ export const supabaseService = {
     },
 
     async getProductUsageHistory(): Promise<ProductUsageHistory[]> {
-        const { data: txs, error } = await supabase.from('product_transactions')
-            .select('product_id, transaction_date, quantity_out')
-            .eq('transaction_type', 'เบิกจ่าย');
-
-        if (error) {
-            console.error("Error fetching usage history", error);
-            return [];
-        }
-
         const usageMap = new Map<string, number>();
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
 
-        (txs || []).forEach((tx: any) => {
-            const date = new Date(tx.transaction_date);
-            const month = date.getMonth();
-            const yearCE = date.getFullYear();
-            const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
-            const fiscalYearBE = fiscalYearCE + 543;
-            
-            const key = `${tx.product_id}_${fiscalYearBE}`;
-            const qty = tx.quantity_out || 0;
-            usageMap.set(key, (usageMap.get(key) || 0) + qty);
-        });
+        while (hasMore) {
+            const { data, error } = await supabase.from('requisition_items')
+                .select(`
+                    product_id,
+                    quantity,
+                    approved_quantity,
+                    requisitions!inner (
+                        created_at,
+                        status
+                    )
+                `)
+                .in('requisitions.status', ['Picking', 'PartiallyApproved', 'Ready', 'Completed'])
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) {
+                console.error("Error fetching usage history", error);
+                break;
+            }
+
+            if (!data || data.length === 0) {
+                hasMore = false;
+                break;
+            }
+
+            data.forEach((item: any) => {
+                const date = new Date(item.requisitions.created_at);
+                const month = date.getMonth();
+                const yearCE = date.getFullYear();
+                const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
+                const fiscalYearBE = fiscalYearCE + 543;
+                
+                const key = `${item.product_id}_${fiscalYearBE}`;
+                const qty = (item.approved_quantity !== null && item.approved_quantity !== undefined) ? item.approved_quantity : (item.quantity || 0);
+                usageMap.set(key, (usageMap.get(key) || 0) + qty);
+            });
+
+            if (data.length < pageSize) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+        }
 
         const history: ProductUsageHistory[] = [];
         usageMap.forEach((qty, key) => {
