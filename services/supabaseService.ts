@@ -905,6 +905,29 @@ export const supabaseService = {
             quantityIn: t.quantity_in, quantityOut: t.quantity_out, balance: t.balance
         }));
 
+        // Fetch Requisition Items to override quantityOut with approved_quantity
+        const { data: reqItems } = await supabase.from('requisition_items')
+            .select(`
+                approved_quantity,
+                requisitions!inner(requisition_number)
+            `)
+            .eq('product_id', productId);
+
+        if (reqItems) {
+            const reqMap = new Map<string, number>();
+            reqItems.forEach((item: any) => {
+                if (item.requisitions?.requisition_number && item.approved_quantity !== null) {
+                    reqMap.set(item.requisitions.requisition_number, item.approved_quantity);
+                }
+            });
+
+            txs.forEach(tx => {
+                if (tx.transactionType === 'เบิกจ่าย' && tx.referenceDocument && reqMap.has(tx.referenceDocument)) {
+                    tx.quantityOut = reqMap.get(tx.referenceDocument)!;
+                }
+            });
+        }
+
         // Fetch GRNs that might be excluded by the RPC (e.g. 'Other' source_type without a PO)
         const { data: additionalGrns } = await supabase.from('goods_received_notes')
             .select('id, grn_number, received_date, source_type, notes, goods_received_items!inner(product_id, quantity_received)')
@@ -1249,12 +1272,47 @@ export const supabaseService = {
     },
 
     async getProductUsageHistory(): Promise<ProductUsageHistory[]> {
-        const { data } = await supabase.from('product_usage_by_fiscal_year').select('*');
-        return (data || []).map(u => ({
-            productId: u.product_id || '',
-            fiscalYear: u.fiscal_year || 0,
-            totalQuantity: u.total_quantity_used || 0
-        }));
+        const { data, error } = await supabase.from('requisition_items')
+            .select(`
+                product_id,
+                approved_quantity,
+                requisitions!inner (
+                    created_at,
+                    status
+                )
+            `)
+            .in('requisitions.status', ['PartiallyApproved', 'Ready', 'Completed']);
+
+        if (error) {
+            console.error("Error fetching usage history", error);
+            return [];
+        }
+
+        const usageMap = new Map<string, number>();
+
+        (data || []).forEach((item: any) => {
+            const date = new Date(item.requisitions.created_at);
+            const month = date.getMonth();
+            const yearCE = date.getFullYear();
+            const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
+            const fiscalYearBE = fiscalYearCE + 543;
+            
+            const key = `${item.product_id}_${fiscalYearBE}`;
+            const qty = item.approved_quantity || 0;
+            usageMap.set(key, (usageMap.get(key) || 0) + qty);
+        });
+
+        const history: ProductUsageHistory[] = [];
+        usageMap.forEach((qty, key) => {
+            const [productId, fy] = key.split('_');
+            history.push({
+                productId,
+                fiscalYear: parseInt(fy, 10),
+                totalQuantity: qty
+            });
+        });
+        
+        return history;
     },
 
     async getGoodsReceivedNotesWithDetails(): Promise<GoodsReceivedNote[]> {
