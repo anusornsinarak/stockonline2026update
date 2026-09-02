@@ -205,7 +205,9 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         
         const summaryStats = items.slice(1).reduce((acc, tx) => {
              acc.totalIn += tx.quantityIn || 0;
-             acc.totalOut += tx.quantityOut || 0;
+             if (tx.transactionType === 'เบิกจ่าย') {
+                 acc.totalOut += tx.quantityOut || 0;
+             }
              return acc;
         }, { totalIn: 0, totalOut: 0 });
 
@@ -371,7 +373,7 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
                                     <InfoBox title="รับเข้าในช่วงเวลาที่เลือก">
                                          <p className="text-2xl font-bold text-green-600">{summary.totalIn.toLocaleString('th-TH')}</p>
                                     </InfoBox>
-                                     <InfoBox title="จ่ายออกในช่วงเวลาที่เลือก">
+                                     <InfoBox title="จ่ายออกในช่วงเวลาที่เลือก (ยอดใช้จริง)">
                                         <p className="text-2xl font-bold text-red-600">{summary.totalOut.toLocaleString('th-TH')}</p>
                                     </InfoBox>
                                 </div>
