@@ -914,6 +914,7 @@ export const supabaseService = {
         while (reqHasMore) {
             const { data } = await supabase.from('requisition_items')
                 .select(`
+                    product_id,
                     approved_quantity,
                     requisitions!inner(requisition_number)
                 `)
@@ -935,14 +936,17 @@ export const supabaseService = {
         if (reqItems.length > 0) {
             const reqMap = new Map<string, number>();
             reqItems.forEach((item: any) => {
-                if (item.requisitions?.requisition_number && item.approved_quantity !== null) {
-                    reqMap.set(item.requisitions.requisition_number, item.approved_quantity);
+                if (item.requisitions?.requisition_number && item.product_id && item.approved_quantity !== null) {
+                    reqMap.set(`${item.requisitions.requisition_number}_${item.product_id}`, item.approved_quantity);
                 }
             });
 
             txs.forEach(tx => {
-                if (tx.transactionType === 'เบิกจ่าย' && tx.referenceDocument && reqMap.has(tx.referenceDocument)) {
-                    tx.quantityOut = reqMap.get(tx.referenceDocument)!;
+                if (tx.transactionType === 'เบิกจ่าย' && tx.referenceDocument) {
+                    const reqKey = `${tx.referenceDocument}_${productId}`;
+                    if (reqMap.has(reqKey)) {
+                        tx.quantityOut = reqMap.get(reqKey)!;
+                    }
                 }
             });
         }
@@ -1302,6 +1306,7 @@ export const supabaseService = {
         while (reqHasMore) {
             const { data, error } = await supabase.from('requisition_items')
                 .select(`
+                    product_id,
                     approved_quantity,
                     requisitions!inner (requisition_number)
                 `)
@@ -1313,8 +1318,8 @@ export const supabaseService = {
             }
 
             data.forEach((item: any) => {
-                if (item.requisitions?.requisition_number && item.approved_quantity !== null && item.approved_quantity !== undefined) {
-                    reqMap.set(item.requisitions.requisition_number, item.approved_quantity);
+                if (item.requisitions?.requisition_number && item.product_id && item.approved_quantity !== null && item.approved_quantity !== undefined) {
+                    reqMap.set(`${item.requisitions.requisition_number}_${item.product_id}`, item.approved_quantity);
                 }
             });
 
@@ -1348,8 +1353,11 @@ export const supabaseService = {
                 
                 // Use override if available, otherwise raw quantity_out
                 let qty = tx.quantity_out || 0;
-                if (tx.reference_document && reqMap.has(tx.reference_document)) {
-                    qty = reqMap.get(tx.reference_document)!;
+                if (tx.reference_document && tx.product_id) {
+                    const reqKey = `${tx.reference_document}_${tx.product_id}`;
+                    if (reqMap.has(reqKey)) {
+                        qty = reqMap.get(reqKey)!;
+                    }
                 }
                 
                 usageMap.set(key, (usageMap.get(key) || 0) + qty);
