@@ -41,6 +41,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
     const [isSaving, setIsSaving] = useState(false);
     const [isManuallyLocked, setIsManuallyLocked] = useState(true);
     const [planningBudget, setPlanningBudget] = useState<number>(budget || 0);
+    const [customPercentage, setCustomPercentage] = useState<number>(5);
 
     const inventoryMap = useMemo(() => new Map(inventory.map(i => [i.productId, i.quantity])), [inventory]);
 
@@ -235,8 +236,7 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
 
     const renderTableRow = (item: any) => {
         const usageLastYear = item.usageHistory[selectedFiscalYear - 1] || 0;
-        const recommended5 = Math.ceil(usageLastYear * 1.05);
-        const recommended10 = Math.ceil(usageLastYear * 1.10);
+        const recommendedQty = Math.ceil(usageLastYear * (1 + (customPercentage / 100)));
 
         return (
         <tr key={item.product.id} className="hover:bg-slate-50/70">
@@ -256,20 +256,12 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
             <td className="px-6 py-2 text-sm text-center">
                 <div className="flex flex-col items-center justify-center gap-1">
                     <button 
-                        onClick={() => !isReadOnly && handleManualQuantityChange(item.product.id, String(recommended5))}
+                        onClick={() => !isReadOnly && handleManualQuantityChange(item.product.id, String(recommendedQty))}
                         disabled={isReadOnly}
                         className="text-[10px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded cursor-pointer transition-colors border border-emerald-200 w-full"
                         title="คลิกเพื่อใช้ยอดนี้"
                     >
-                        +5%: {recommended5.toLocaleString()}
-                    </button>
-                    <button 
-                        onClick={() => !isReadOnly && handleManualQuantityChange(item.product.id, String(recommended10))}
-                        disabled={isReadOnly}
-                        className="text-[10px] text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded cursor-pointer transition-colors border border-sky-200 w-full"
-                        title="คลิกเพื่อใช้ยอดนี้"
-                    >
-                        +10%: {recommended10.toLocaleString()}
+                        +{customPercentage}%: {recommendedQty.toLocaleString()}
                     </button>
                 </div>
             </td>
@@ -386,37 +378,36 @@ export const PurchasePlanView: React.FC<PurchasePlanViewProps> = ({ products = [
 
                 {/* Card 3: Quick Adjust Tools */}
                 <div className="bg-sky-50 dark:bg-sky-900/20 p-4 rounded-xl border border-sky-100 dark:border-sky-800 flex flex-col justify-center">
-                    <span className="text-sky-800 dark:text-sky-200 text-sm font-bold block mb-3">
-                        ⚡ ปรับยอดจำนวนตามแผนทั้งหมดด่วน
-                    </span>
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-sky-800 dark:text-sky-200 text-sm font-bold block">
+                            ⚡ ปรับยอดจำนวนตามแผนทั้งหมดด่วน
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <span className="text-xs text-slate-600 dark:text-slate-400">เพิ่มขึ้น</span>
+                            <input 
+                                type="number" 
+                                value={customPercentage} 
+                                onChange={e => setCustomPercentage(Math.max(0, Number(e.target.value)))} 
+                                className="w-12 px-1 py-0.5 text-xs text-right border rounded bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
+                            />
+                            <span className="text-xs text-slate-600 dark:text-slate-400">%</span>
+                        </div>
+                    </div>
+                    
                     <div className="grid grid-cols-2 gap-2">
                         <button 
-                            onClick={() => handleBulkApplyPercentage(5, 'usage')}
+                            onClick={() => handleBulkApplyPercentage(customPercentage, 'usage')}
                             disabled={isReadOnly}
                             className="text-xs bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 py-1.5 px-2 rounded hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
                         >
-                            +5% (จากใช้จริง)
+                            +{customPercentage}% (จากใช้จริง)
                         </button>
                         <button 
-                            onClick={() => handleBulkApplyPercentage(10, 'usage')}
+                            onClick={() => handleBulkApplyPercentage(customPercentage, 'survey')}
                             disabled={isReadOnly}
                             className="text-xs bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-400 py-1.5 px-2 rounded hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
                         >
-                            +10% (จากใช้จริง)
-                        </button>
-                        <button 
-                            onClick={() => handleBulkApplyPercentage(5, 'survey')}
-                            disabled={isReadOnly}
-                            className="text-xs bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 py-1.5 px-2 rounded hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-                        >
-                            +5% (จากสำรวจ)
-                        </button>
-                        <button 
-                            onClick={() => handleBulkApplyPercentage(10, 'survey')}
-                            disabled={isReadOnly}
-                            className="text-xs bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-400 py-1.5 px-2 rounded hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-                        >
-                            +10% (จากสำรวจ)
+                            +{customPercentage}% (จากสำรวจ)
                         </button>
                     </div>
                 </div>

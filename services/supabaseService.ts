@@ -1351,16 +1351,15 @@ export const supabaseService = {
                 
                 const key = `${tx.product_id}_${fiscalYearBE}`;
                 
-                // Use override if available, otherwise raw quantity_out
-                let qty = tx.quantity_out || 0;
+                // Only count usage if it comes from an approved requisition (เบิก/ยืม)
+                // Ignore manual stock adjustments (ซึ่งจะไม่มี reference_document ที่ตรงกับใบเบิกใน reqMap)
                 if (tx.reference_document && tx.product_id) {
                     const reqKey = `${tx.reference_document}_${tx.product_id}`;
                     if (reqMap.has(reqKey)) {
-                        qty = reqMap.get(reqKey)!;
+                        const qty = reqMap.get(reqKey)!;
+                        usageMap.set(key, (usageMap.get(key) || 0) + qty);
                     }
                 }
-                
-                usageMap.set(key, (usageMap.get(key) || 0) + qty);
             });
 
             if (txs.length < pageSize) txHasMore = false;
