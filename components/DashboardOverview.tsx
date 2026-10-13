@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Requisition, Product, Department } from '../types';
 import { supabaseService } from '../services/supabaseService';
+import { getApprovedItemQuantity } from '../utils';
 import LoadingScreen from './LoadingScreen';
 import ChartBarIcon from './icons/ChartBarIcon';
 import CurrencyDollarIcon from './icons/CurrencyDollarIcon';
@@ -81,7 +82,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user }) =>
         const offCycleDepts = new Map<string, number>();
 
         requisitions.forEach(req => {
-            if (!['Ready', 'PartiallyApproved', 'Completed', 'Picking'].includes(req.status)) return;
+            if (!['Ready', 'PartiallyApproved', 'Completed'].includes(req.status)) return;
 
             if (req.type === 'OffCycle') {
                 const dept = deptMap.get(req.departmentId);
@@ -91,9 +92,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user }) =>
             }
 
             req.items?.forEach(item => {
-                const approvedQty = (['Completed', 'Ready'].includes(req.status) && (item.approvedQuantity ?? 0) > 0)
-                            ? (item.approvedQuantity || 0)
-                            : (item.quantity || 0);
+                const approvedQty = getApprovedItemQuantity(req, item);
 
                 if (approvedQty > 0) {
                     const prod = productMap.get(item.productId);

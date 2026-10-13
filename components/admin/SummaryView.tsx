@@ -8,7 +8,7 @@ import TableTemplate from './TableTemplate';
 import { supabaseService } from '../../services/supabaseService';
 import Modal from '../Modal';
 import CurrencyDollarIcon from '../icons/CurrencyDollarIcon';
-import { getFiscalYearBE } from '../../utils';
+import { getFiscalYearBE, getApprovedItemQuantity, getFiscalYearDateRange } from '../../utils';
 
 const exportToExcel = (data: any[], fileName: string, sheetName: string = "Sheet1") => {
     const worksheet = XLSX.utils.json_to_sheet(data);
@@ -91,22 +91,22 @@ export const SummaryView: React.FC<SummaryViewProps> = ({ data, requisitions, fi
     const totalApprovedValue = useMemo(() => {
         return (requisitions || [])
             .filter(r => {
-                if (!['Ready', 'PartiallyApproved', 'Completed', 'Picking', 'Submitted'].includes(r.status)) return false;
+                // Strictly count only Admin-approved requisitions
+                if (!['Ready', 'PartiallyApproved', 'Completed'].includes(r.status)) return false;
                 
-                // Use fallback date for fiscal year budget calculation
-                const reportDate = r.approvedAt || r.submittedAt || r.createdAt;
+                const reportDate = r.approvedAt || r.createdAt;
                 if (!reportDate) return false;
                 
                 const approvedDate = new Date(reportDate);
                 return getFiscalYearBE(approvedDate) === fiscalYear;
             })
             .reduce((sum, req) => {
-                // If totalValue is not calculated in DB, calculate it from items
-                const reqValue = req.totalValue ?? (req.items || []).reduce((itemSum, item) => {
+                const reqApprovedVal = (req.items || []).reduce((itemSum, item) => {
+                    const approvedQty = getApprovedItemQuantity(req, item);
                     const price = item.pricePerUnit ?? item.product?.pricePerUnit ?? 0;
-                    return itemSum + ((item.approvedQuantity ?? 0) * price);
+                    return itemSum + (approvedQty * price);
                 }, 0);
-                return sum + reqValue;
+                return sum + reqApprovedVal;
             }, 0);
     }, [requisitions, fiscalYear]);
 
@@ -147,11 +147,16 @@ export const SummaryView: React.FC<SummaryViewProps> = ({ data, requisitions, fi
         }
     };
 
+    const fiscalYearRange = useMemo(() => getFiscalYearDateRange(fiscalYear), [fiscalYear]);
+
     return (
       <div>
         <div className="mb-8 p-6 bg-gradient-to-r from-sky-500 to-indigo-500 text-white border border-slate-200 rounded-2xl shadow-lg print-section">
             <div className="flex justify-between items-start">
-                <h3 className="text-xl font-bold mb-4">สรุปงบประมาณปี {fiscalYear}</h3>
+                <div>
+                    <h3 className="text-xl font-bold">สรุปงบประมาณปี {fiscalYear}</h3>
+                    <p className="text-xs text-sky-100 mt-0.5">รอบระยะเวลา: {fiscalYearRange.label} (เริ่ม 1 ต.ค. {fiscalYear === 2570 ? '69' : String(fiscalYear - 544 + 543).slice(-2)})</p>
+                </div>
                 {!isReadOnly && (
                     <button 
                         onClick={() => setIsBudgetModalOpen(true)}

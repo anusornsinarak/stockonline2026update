@@ -980,6 +980,37 @@ export const supabaseService = {
             }
         }
         
+        // Fetch direct loan transactions so they also appear in Stock Card as "ยืมสินค้า"
+        try {
+            const { data: loanTxns } = await supabase.from('loan_transactions')
+                .select(`
+                    id, transaction_number, created_at, borrower_name, status,
+                    items:loan_transaction_items!inner(product_id, quantity)
+                `)
+                .eq('items.product_id', productId)
+                .lte('created_at', endDateTime);
+
+            (loanTxns || []).forEach((txn: any) => {
+                const exists = txs.some(t => t.referenceDocument === txn.transaction_number || t.referenceDocument === txn.id);
+                if (exists) return;
+
+                const item = (txn.items || []).find((i: any) => i.product_id === productId);
+                if (item && item.quantity > 0) {
+                    txs.push({
+                        transactionDate: new Date(txn.created_at),
+                        transactionType: 'ยืมสินค้า',
+                        referenceDocument: txn.transaction_number || txn.id,
+                        departmentName: txn.borrower_name || 'ขอยืมเวชภัณฑ์',
+                        quantityIn: 0,
+                        quantityOut: Number(item.quantity) || 0,
+                        balance: 0
+                    });
+                }
+            });
+        } catch (e) {
+            console.error('Error fetching direct loans for stock card:', e);
+        }
+
         // Ensure transactions are sorted chronologically
         txs.sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime());
         
@@ -1086,9 +1117,13 @@ export const supabaseService = {
         const startDate = `${startYear}-10-01T00:00:00Z`;
         const endDate = `${endYear}-09-30T23:59:59Z`;
 
+        // Check department type (Internal vs External)
+        const { data: dept } = await supabase.from('departments').select('type').eq('id', deptId).maybeSingle();
+        const isExternal = dept?.type === 'External';
+
         const { data, error } = await supabase
             .from('requisition_items')
-            .select('product_id, approved_quantity, quantity, requisitions!inner(department_id, status, created_at)')
+            .select('product_id, approved_quantity, quantity, status, requisitions!inner(department_id, status, created_at)')
             .eq('requisitions.department_id', deptId)
             .in('requisitions.status', ['Completed', 'Ready', 'PartiallyApproved'])
             .gte('requisitions.created_at', startDate)
@@ -1098,9 +1133,41 @@ export const supabaseService = {
 
         const usageMap: Record<string, number> = {};
         (data as any[] || []).forEach(item => {
-            const qty = (item.approved_quantity !== null && item.approved_quantity !== undefined) ? item.approved_quantity : item.quantity;
-            usageMap[item.product_id] = (usageMap[item.product_id] || 0) + qty;
+            if (['Rejected', 'Cancelled', 'Backordered'].includes(item.status)) return;
+            const reqStatus = item.requisitions?.status;
+            let qty = 0;
+            if (item.approved_quantity !== null && item.approved_quantity !== undefined) {
+                qty = Math.max(0, Number(item.approved_quantity));
+            } else if (['Completed', 'Ready'].includes(reqStatus)) {
+                qty = Math.max(0, Number(item.quantity) || 0);
+            }
+            if (qty > 0) {
+                usageMap[item.product_id] = (usageMap[item.product_id] || 0) + qty;
+            }
         });
+
+        // For External departments, also combine approved loan items as requested by user ("รวมทั้งรายการเบิกและยืมที่อนุมัติในยอดสรุปเดียวกัน")
+        if (isExternal) {
+            try {
+                const { data: loanTxns } = await supabase
+                    .from('loan_transactions')
+                    .select('id, created_at, status, loan_transaction_items(product_id, quantity)')
+                    .eq('department_id', deptId)
+                    .gte('created_at', startDate)
+                    .lte('created_at', endDate);
+
+                (loanTxns || []).forEach((txn: any) => {
+                    (txn.loan_transaction_items || []).forEach((item: any) => {
+                        const qty = Number(item.quantity) || 0;
+                        if (qty > 0 && item.product_id) {
+                            usageMap[item.product_id] = (usageMap[item.product_id] || 0) + qty;
+                        }
+                    });
+                });
+            } catch (err) {
+                console.error('Error fetching loan transactions for external dept usage:', err);
+            }
+        }
 
         return usageMap;
     },
@@ -1307,8 +1374,10 @@ export const supabaseService = {
             const { data, error } = await supabase.from('requisition_items')
                 .select(`
                     product_id,
+                    quantity,
                     approved_quantity,
-                    requisitions!inner (requisition_number)
+                    status,
+                    requisitions!inner (requisition_number, status)
                 `)
                 .range(reqPage * pageSize, (reqPage + 1) * pageSize - 1);
 
@@ -1318,8 +1387,16 @@ export const supabaseService = {
             }
 
             data.forEach((item: any) => {
-                if (item.requisitions?.requisition_number && item.product_id && item.approved_quantity !== null && item.approved_quantity !== undefined) {
-                    reqMap.set(`${item.requisitions.requisition_number}_${item.product_id}`, item.approved_quantity);
+                if (item.requisitions?.requisition_number && item.product_id) {
+                    let qty = 0;
+                    if (['Rejected', 'Cancelled', 'Backordered'].includes(item.status)) {
+                        qty = 0;
+                    } else if (item.approved_quantity !== null && item.approved_quantity !== undefined) {
+                        qty = Math.max(0, Number(item.approved_quantity));
+                    } else if (['Completed', 'Ready'].includes(item.requisitions?.status)) {
+                        qty = Math.max(0, Number(item.quantity) || 0);
+                    }
+                    reqMap.set(`${item.requisitions.requisition_number}_${item.product_id}`, qty);
                 }
             });
 
@@ -1327,7 +1404,7 @@ export const supabaseService = {
             else reqPage++;
         }
 
-        // 2. Fetch all product transactions (paginated)
+        // 2. Fetch all product transactions for 'เบิกจ่าย' (Disbursements)
         let txPage = 0;
         let txHasMore = true;
 
@@ -1351,12 +1428,18 @@ export const supabaseService = {
                 
                 const key = `${tx.product_id}_${fiscalYearBE}`;
                 
-                // Only count usage if it comes from an approved requisition (เบิก/ยืม)
-                // Ignore manual stock adjustments (ซึ่งจะไม่มี reference_document ที่ตรงกับใบเบิกใน reqMap)
+                // Only count usage from approved requisitions / disbursements matching stock card
+                // Ignore manual stock adjustments (reference_document contains adjustment/GRN)
                 if (tx.reference_document && tx.product_id) {
                     const reqKey = `${tx.reference_document}_${tx.product_id}`;
+                    let qty = 0;
                     if (reqMap.has(reqKey)) {
-                        const qty = reqMap.get(reqKey)!;
+                        qty = reqMap.get(reqKey)!;
+                    } else {
+                        // Fallback to tx.quantity_out if not found in reqMap (ensuring exact match with Stock Card)
+                        qty = Math.max(0, Number(tx.quantity_out) || 0);
+                    }
+                    if (qty > 0) {
                         usageMap.set(key, (usageMap.get(key) || 0) + qty);
                     }
                 }
@@ -1364,6 +1447,33 @@ export const supabaseService = {
 
             if (txs.length < pageSize) txHasMore = false;
             else txPage++;
+        }
+
+        // 3. Include direct loan transactions (approved loans count toward usage as requested by user)
+        try {
+            const { data: loanTxns } = await supabase.from('loan_transactions')
+                .select(`
+                    created_at,
+                    status,
+                    items:loan_transaction_items(product_id, quantity)
+                `);
+
+            (loanTxns || []).forEach((txn: any) => {
+                const date = new Date(txn.created_at);
+                const month = date.getMonth();
+                const yearCE = date.getFullYear();
+                const fiscalYearCE = month >= 9 ? yearCE + 1 : yearCE;
+                const fiscalYearBE = fiscalYearCE + 543;
+
+                (txn.items || []).forEach((item: any) => {
+                    if (item.product_id && item.quantity > 0) {
+                        const key = `${item.product_id}_${fiscalYearBE}`;
+                        usageMap.set(key, (usageMap.get(key) || 0) + Number(item.quantity));
+                    }
+                });
+            });
+        } catch (e) {
+            console.error('Error fetching loan transactions in usage history:', e);
         }
 
         const history: ProductUsageHistory[] = [];

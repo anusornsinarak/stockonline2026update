@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Department, Product, Requisition, InventoryItem, productCategories, GoodsReceivedNote, DepartmentType, PurchasePlanItem, SurveyEntry, ProductUsageHistory, DocumentSettings, ProductCategory, departmentTypes } from '../types';
+import { Department, Product, Requisition, InventoryItem, productCategories, GoodsReceivedNote, DepartmentType, PurchasePlanItem, SurveyEntry, ProductUsageHistory, DocumentSettings, ProductCategory, departmentTypes, LoanTransaction } from '../types';
 import PrinterIcon from './icons/PrinterIcon';
 import * as XLSX from 'xlsx';
 import DownloadIcon from './icons/DownloadIcon';
@@ -9,9 +9,10 @@ import StockMovementReportView from './admin/StockMovementReportView';
 import PurchasePlanPrintView from './admin/PurchasePlanPrintView';
 import { supabaseService } from '../services/supabaseService';
 import ArrowUturnLeftIcon from './icons/ArrowUturnLeftIcon';
+import { getApprovedItemQuantity, getFiscalYearDateRange as getFiscalYearDateRangeUtil } from '../utils';
 
 // --- Type definitions & Constants ---
-type ReportId = 'usageSummary' | 'inventoryStatus' | 'inventoryValue' | 'priceComparison' | 'receivingSummary' | 'inventoryMovement' | 'crosstabUsage' | 'slowMovingStock' | 'offCycleRequisition' | 'stockMovementSummary' | 'purchasePlan' | 'returns' | 'unplannedPurchases' | 'usageVsPlan' | 'departmentUsageVsPlan';
+type ReportId = 'usageSummary' | 'externalDeptSummary' | 'inventoryStatus' | 'inventoryValue' | 'priceComparison' | 'receivingSummary' | 'inventoryMovement' | 'crosstabUsage' | 'slowMovingStock' | 'offCycleRequisition' | 'stockMovementSummary' | 'purchasePlan' | 'returns' | 'unplannedPurchases' | 'usageVsPlan' | 'departmentUsageVsPlan';
 type DatePreset = 'today' | 'this_month' | 'this_year' | 'custom';
 
 interface ReportDefinition {
@@ -28,9 +29,17 @@ const availableReports: ReportDefinition[] = [
     {
         id: 'usageSummary',
         name: 'รายงานสรุปการเบิกจ่ายเวชภัณฑ์',
-        description: 'สรุปมูลค่าการเบิกจ่ายตามหน่วยงานและประเภท สำหรับช่วงเวลาที่เลือก',
+        description: 'สรุปมูลค่าการเบิกจ่ายตามหน่วยงานและประเภท สำหรับช่วงเวลาที่เลือก (หน่วยงานภายนอกรวมยอดเบิกและยืม)',
         needsDateRangeFilter: true,
         needsDeptTypeFilter: true,
+    },
+    {
+        id: 'externalDeptSummary',
+        name: 'รายงานสรุปการเบิก-ยืม หน่วยงานภายนอก รพ.',
+        description: 'สรุปรายการเบิกและยืมที่อนุมัติของหน่วยงานภายนอก รพ. รวมมูลค่าเบิก-ยืม พร้อมเอกสารสำหรับส่งแจ้งหน่วยงาน',
+        needsDateRangeFilter: true,
+        needsFiscalYearFilter: true,
+        needsDepartmentFilter: true,
     },
     {
         id: 'departmentUsageVsPlan',
@@ -265,6 +274,11 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
     const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
     const departmentMap = useMemo(() => new Map(departments.map(d => [d.id, d])), [departments]);
 
+    const [loanTransactions, setLoanTransactions] = useState<LoanTransaction[]>([]);
+    useEffect(() => {
+        supabaseService.getLoanTransactions().then(setLoanTransactions).catch(console.error);
+    }, []);
+
     const handleBack = () => {
         setPreviewData(null);
     };
@@ -314,10 +328,11 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
+        // Filter ONLY Admin-approved requisitions as requested
         const filteredReqsByDate = (requisitions || []).filter(req => {
-            const dateToUse = req.approvedAt || req.submittedAt || req.createdAt;
+            const dateToUse = req.approvedAt || req.createdAt;
             const reportDate = dateToUse ? new Date(dateToUse) : null;
-            return ['Completed', 'Ready', 'PartiallyApproved', 'Picking', 'Submitted'].includes(req.status) &&
+            return ['Completed', 'Ready', 'PartiallyApproved'].includes(req.status) &&
                    reportDate && reportDate >= start && reportDate <= end;
         });
 
@@ -336,8 +351,9 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                 const usageData: Record<string, { departmentName: string, values: Record<string, number>, total: number }> = {};
     
                 filteredDepts.forEach(dept => {
+                    const isExt = dept.type === 'External';
                     usageData[dept.id] = {
-                        departmentName: dept.name,
+                        departmentName: isExt ? `${dept.name} (รวมเบิก+ยืม)` : dept.name,
                         values: productCategories.reduce((acc, cat) => ({ ...acc, [cat]: 0 }), {} as Record<string, number>),
                         total: 0
                     };
@@ -345,9 +361,7 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
     
                 filteredReqs.forEach(req => {
                     (req.items || []).forEach(item => {
-                        const approvedQty = (['Completed', 'Ready'].includes(req.status) && (item.approvedQuantity ?? 0) > 0)
-                            ? (item.approvedQuantity || 0)
-                            : (item.quantity || 0);
+                        const approvedQty = getApprovedItemQuantity(req, item);
 
                         if (approvedQty > 0) {
                             const product = productMap.get(item.productId);
@@ -359,6 +373,26 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                                 }
                             }
                         }
+                    });
+                });
+
+                // For external departments, combine approved loan items into summary as requested ("รวมทั้งรายการเบิกและยืมที่อนุมัติในยอดสรุปเดียวกัน")
+                filteredDepts.filter(d => d.type === 'External').forEach(dept => {
+                    (loanTransactions || []).forEach(txn => {
+                        if (txn.departmentId !== dept.id) return;
+                        const txnDate = new Date(txn.createdAt);
+                        if (txnDate < start || txnDate > end) return;
+                        (txn.items || []).forEach(lItem => {
+                            const product = productMap.get(lItem.productId);
+                            const qty = Number(lItem.quantity) || 0;
+                            if (product?.category && qty > 0) {
+                                const value = qty * (product.pricePerUnit || 0);
+                                if (usageData[dept.id]) {
+                                    usageData[dept.id].values[product.category] += value;
+                                    usageData[dept.id].total += value;
+                                }
+                            }
+                        });
                     });
                 });
     
@@ -390,6 +424,122 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                 }]);
                 return;
             }
+
+            case 'externalDeptSummary': {
+                // Focus on external departments
+                const extDepts = departments.filter(d => d.type === 'External' && (deptFilter === 'all' || d.id === deptFilter));
+                const extDeptIds = new Set(extDepts.map(d => d.id));
+
+                // 1. Requisitions for external depts (Admin approved only)
+                const extReqs = filteredReqsByDate.filter(r => extDeptIds.has(r.departmentId));
+                const reqRows: any[] = [];
+                let totalReqValue = 0;
+
+                extReqs.forEach(req => {
+                    const deptName = departmentMap.get(req.departmentId)?.name || 'หน่วยงานภายนอก';
+                    const reqDate = req.approvedAt || req.createdAt;
+                    (req.items || []).forEach(item => {
+                        const approvedQty = getApprovedItemQuantity(req, item);
+                        if (approvedQty > 0) {
+                            const prod = productMap.get(item.productId);
+                            const price = item.pricePerUnit ?? prod?.pricePerUnit ?? 0;
+                            const val = approvedQty * price;
+                            totalReqValue += val;
+                            reqRows.push({
+                                departmentName: deptName,
+                                date: reqDate ? toISODateString(new Date(reqDate)) : '-',
+                                docNumber: req.requisitionNumber || req.id,
+                                productName: prod?.name || item.productId,
+                                category: prod?.category || '-',
+                                quantity: approvedQty,
+                                unit: prod?.unit || 'ชิ้น',
+                                pricePerUnit: price,
+                                totalValue: val
+                            });
+                        }
+                    });
+                });
+
+                // 2. Loans for external depts
+                const loanRows: any[] = [];
+                let totalLoanValue = 0;
+
+                (loanTransactions || []).forEach(txn => {
+                    if (!extDeptIds.has(txn.departmentId)) return;
+                    const txnDate = new Date(txn.createdAt);
+                    if (txnDate < start || txnDate > end) return;
+                    const deptName = departmentMap.get(txn.departmentId)?.name || 'หน่วยงานภายนอก';
+
+                    (txn.items || []).forEach(lItem => {
+                        const prod = productMap.get(lItem.productId) || (lItem as any).product;
+                        const qty = Number(lItem.quantity) || 0;
+                        const returned = Number(lItem.returnedQuantity) || 0;
+                        const outstanding = Math.max(0, qty - returned);
+                        const price = prod?.pricePerUnit || 0;
+                        const val = qty * price;
+                        totalLoanValue += val;
+
+                        loanRows.push({
+                            departmentName: deptName,
+                            date: toISODateString(txnDate),
+                            docNumber: txn.transactionNumber || txn.id,
+                            borrowerName: txn.borrowerName || '-',
+                            productName: prod?.name || lItem.productId,
+                            quantity: qty,
+                            returnedQuantity: returned,
+                            outstandingQuantity: outstanding,
+                            status: outstanding === 0 ? 'คืนครบแล้ว' : `ค้างคืน ${outstanding}`,
+                            pricePerUnit: price,
+                            totalValue: val
+                        });
+                    });
+                });
+
+                const grandTotal = totalReqValue + totalLoanValue;
+
+                setPreviewData([{
+                    id: 'externalDeptSummary',
+                    title: `รายงานสรุปการเบิก-ยืม เวชภัณฑ์หน่วยงานภายนอก รพ. (${startDate} - ${endDate})`,
+                    summaryStats: [
+                        { title: 'มูลค่าเบิกจ่าย (อนุมัติ)', value: formatCurrency(totalReqValue) },
+                        { title: 'มูลค่ายืมเวชภัณฑ์', value: formatCurrency(totalLoanValue) },
+                        { title: 'มูลค่ารวมทั้งสิ้น (เบิก+ยืม)', value: formatCurrency(grandTotal) },
+                    ],
+                    tables: [
+                        {
+                            title: '1. รายการเบิกจ่ายเวชภัณฑ์ที่ได้รับการอนุมัติ',
+                            columns: [
+                                { key: 'departmentName', label: 'หน่วยงานภายนอก', className: 'font-bold' },
+                                { key: 'date', label: 'วันที่เบิก' },
+                                { key: 'docNumber', label: 'เลขที่ใบเบิก' },
+                                { key: 'productName', label: 'รายการเวชภัณฑ์' },
+                                { key: 'quantity', label: 'จำนวนอนุมัติ', format: formatNumber, className: 'text-right' },
+                                { key: 'unit', label: 'หน่วย' },
+                                { key: 'pricePerUnit', label: 'ราคา/หน่วย', format: formatCurrency, className: 'text-right' },
+                                { key: 'totalValue', label: 'รวมมูลค่า', format: formatCurrency, className: 'text-right font-bold' },
+                            ],
+                            data: reqRows.length > 0 ? reqRows : [{ departmentName: 'ไม่มีรายการเบิกจ่ายในช่วงเวลานี้', date: '-', docNumber: '-', productName: '-', quantity: 0, unit: '-', pricePerUnit: 0, totalValue: 0 }]
+                        },
+                        {
+                            title: '2. รายการยืมเวชภัณฑ์ที่ได้รับการอนุมัติ',
+                            columns: [
+                                { key: 'departmentName', label: 'หน่วยงานภายนอก', className: 'font-bold' },
+                                { key: 'date', label: 'วันที่ยืม' },
+                                { key: 'docNumber', label: 'เลขที่ใบยืม' },
+                                { key: 'borrowerName', label: 'ผู้ขอยืม' },
+                                { key: 'productName', label: 'รายการเวชภัณฑ์' },
+                                { key: 'quantity', label: 'จำนวนยืม', format: formatNumber, className: 'text-right' },
+                                { key: 'returnedQuantity', label: 'คืนแล้ว', format: formatNumber, className: 'text-right' },
+                                { key: 'status', label: 'สถานะการคืน', className: 'text-center font-medium' },
+                                { key: 'pricePerUnit', label: 'ราคา/หน่วย', format: formatCurrency, className: 'text-right' },
+                                { key: 'totalValue', label: 'มูลค่ายืม', format: formatCurrency, className: 'text-right font-bold' },
+                            ],
+                            data: loanRows.length > 0 ? loanRows : [{ departmentName: 'ไม่มีรายการยืมในช่วงเวลานี้', date: '-', docNumber: '-', borrowerName: '-', productName: '-', quantity: 0, returnedQuantity: 0, status: '-', pricePerUnit: 0, totalValue: 0 }]
+                        }
+                    ]
+                }]);
+                return;
+            }
             case 'usageVsPlan': {
                 // 1. Get Plan for the selected fiscal year
                 let specificPlan = purchasePlan;
@@ -402,24 +552,34 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                 }
                 const planMap = new Map<string, number>(specificPlan.map(p => [p.productId, p.plannedQuantity]));
 
-                // 2. Get Usage (Requisitions) for the fiscal year
+                // 2. Get Usage (Requisitions) for the fiscal year (Admin approved only)
                 const fiscalYearRange = getFiscalYearDateRange(fiscalYearFilter);
                 const reqsInFiscalYear = (requisitions || []).filter(req => {
-                    const reportDate = req.approvedAt || req.submittedAt || req.createdAt;
-                    return ['Completed', 'Ready', 'PartiallyApproved', 'Picking', 'Submitted'].includes(req.status) &&
+                    const reportDate = req.approvedAt || req.createdAt;
+                    return ['Completed', 'Ready', 'PartiallyApproved'].includes(req.status) &&
                            reportDate && reportDate >= fiscalYearRange.start && reportDate <= fiscalYearRange.end;
                 });
 
-                // 3. Aggregate Usage
+                // 3. Aggregate Usage (Approved Requisitions + Approved Loans as requested)
                 const usageMap = new Map<string, number>();
                 reqsInFiscalYear.forEach(req => {
                     (req.items || []).forEach(item => {
-                        const approvedQty = (['Completed', 'Ready'].includes(req.status) && (item.approvedQuantity ?? 0) > 0)
-                            ? (item.approvedQuantity || 0)
-                            : (item.quantity || 0);
+                        const approvedQty = getApprovedItemQuantity(req, item);
 
                         if (approvedQty > 0) {
                             usageMap.set(item.productId, (usageMap.get(item.productId) || 0) + approvedQty);
+                        }
+                    });
+                });
+
+                // Include approved loans into usageMap
+                (loanTransactions || []).forEach(txn => {
+                    const txnDate = new Date(txn.createdAt);
+                    if (txnDate < fiscalYearRange.start || txnDate > fiscalYearRange.end) return;
+                    (txn.items || []).forEach(lItem => {
+                        const qty = Number(lItem.quantity) || 0;
+                        if (qty > 0 && lItem.productId) {
+                            usageMap.set(lItem.productId, (usageMap.get(lItem.productId) || 0) + qty);
                         }
                     });
                 });
@@ -515,11 +675,11 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     relevantSurveys = relevantSurveys.filter(s => s.departmentId === deptFilter);
                 }
 
-                // 2. Get Usage (Requisitions)
+                // 2. Get Usage (Requisitions - Admin approved only)
                 const fiscalYearRange = getFiscalYearDateRange(fiscalYearFilter);
                 let reqsInFiscalYear = (requisitions || []).filter(req => {
-                    const reportDate = req.approvedAt || req.submittedAt || req.createdAt;
-                    return ['Completed', 'Ready', 'PartiallyApproved', 'Picking', 'Submitted'].includes(req.status) &&
+                    const reportDate = req.approvedAt || req.createdAt;
+                    return ['Completed', 'Ready', 'PartiallyApproved'].includes(req.status) &&
                            reportDate && reportDate >= fiscalYearRange.start && reportDate <= fiscalYearRange.end;
                 });
 
@@ -545,19 +705,37 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     });
                 });
 
-                // Process Usage
+                // Process Usage (Admin approved only)
                 reqsInFiscalYear.forEach(req => {
                     if (!dataMap.has(req.departmentId)) dataMap.set(req.departmentId, new Map());
                     const deptProducts = dataMap.get(req.departmentId)!;
 
                     (req.items || []).forEach(item => {
-                        const approvedQty = (['Completed', 'Ready'].includes(req.status) && (item.approvedQuantity ?? 0) > 0)
-                            ? (item.approvedQuantity || 0)
-                            : (item.quantity || 0);
+                        const approvedQty = getApprovedItemQuantity(req, item);
 
                         if (approvedQty > 0) {
                             if (!deptProducts.has(item.productId)) deptProducts.set(item.productId, { planned: 0, used: 0 });
                             deptProducts.get(item.productId)!.used += approvedQty;
+                        }
+                    });
+                });
+
+                // Include approved loans as requested ("รวมรายการเบิกและรายการยืมที่ Admin อนุมัติแล้วทั้งหมด")
+                (loanTransactions || []).forEach(txn => {
+                    if (deptFilter !== 'all' && txn.departmentId !== deptFilter) return;
+                    if (!txn.departmentId) return;
+
+                    const txnDate = new Date(txn.createdAt);
+                    if (txnDate < fiscalYearRange.start || txnDate > fiscalYearRange.end) return;
+
+                    if (!dataMap.has(txn.departmentId)) dataMap.set(txn.departmentId, new Map());
+                    const deptProducts = dataMap.get(txn.departmentId)!;
+
+                    (txn.items || []).forEach(lItem => {
+                        const qty = Number(lItem.quantity) || 0;
+                        if (qty > 0 && lItem.productId) {
+                            if (!deptProducts.has(lItem.productId)) deptProducts.set(lItem.productId, { planned: 0, used: 0 });
+                            deptProducts.get(lItem.productId)!.used += qty;
                         }
                     });
                 });
@@ -638,9 +816,7 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     if (deptName && crosstabData[deptName]) {
                         (req.items || []).forEach(item => {
                             const product = productMap.get(item.productId);
-                            const approvedQty = (['Completed', 'Ready'].includes(req.status) && (item.approvedQuantity ?? 0) > 0)
-                                ? (item.approvedQuantity || 0)
-                                : (item.quantity || 0);
+                            const approvedQty = getApprovedItemQuantity(req, item);
 
                             if (product && approvedQty > 0) {
                                 const value = approvedQty * (item.pricePerUnit ?? product.pricePerUnit ?? 0);
@@ -648,6 +824,23 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                             }
                         });
                     }
+                });
+
+                // Include external department loans into crosstab
+                filteredDepts.filter(d => d.type === 'External').forEach(dept => {
+                    (loanTransactions || []).forEach(txn => {
+                        if (txn.departmentId !== dept.id) return;
+                        const txnDate = new Date(txn.createdAt);
+                        if (txnDate < start || txnDate > end) return;
+                        (txn.items || []).forEach(lItem => {
+                            const product = productMap.get(lItem.productId);
+                            const qty = Number(lItem.quantity) || 0;
+                            if (product && qty > 0 && crosstabData[dept.name]) {
+                                const val = qty * (product.pricePerUnit || 0);
+                                crosstabData[dept.name][product.category] += val;
+                            }
+                        });
+                    });
                 });
             
                 const tableData = Object.entries(crosstabData).map(([departmentName, values]) => ({
@@ -688,7 +881,7 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     dataByDept[req.departmentId].count++;
                     const reqValue = (req.items || []).reduce((sum, item) => {
                         const product = productMap.get(item.productId);
-                        const approvedQty = item.approvedQuantity ?? item.quantity ?? 0;
+                        const approvedQty = getApprovedItemQuantity(req, item);
                         return sum + approvedQty * (item.pricePerUnit ?? product?.pricePerUnit ?? 0);
                     }, 0);
                     dataByDept[req.departmentId].totalValue += reqValue;
@@ -839,7 +1032,7 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                 filteredReqsByDate.forEach(req => {
                     (req.items || []).forEach(item => {
                         const product = productMap.get(item.productId);
-                        const approvedQty = item.approvedQuantity ?? item.quantity ?? 0;
+                        const approvedQty = getApprovedItemQuantity(req, item);
                         if (product && approvedQty > 0) {
                             valueOut[product.category] += approvedQty * (item.pricePerUnit ?? product.pricePerUnit ?? 0);
                         }
@@ -1034,8 +1227,8 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     return grn.status === 'Completed' && receivedDate >= range.start && receivedDate <= range.end;
                 });
                 const disbursedInPeriod = (requisitions || []).filter(req => {
-                    const reportDate = req.approvedAt || req.submittedAt || req.createdAt;
-                    return ['Completed', 'Ready', 'PartiallyApproved', 'Picking', 'Submitted'].includes(req.status) && reportDate && reportDate >= range.start && reportDate <= range.end;
+                    const reportDate = req.approvedAt || req.createdAt;
+                    return ['Completed', 'Ready', 'PartiallyApproved'].includes(req.status) && reportDate && reportDate >= range.start && reportDate <= range.end;
                 });
 
                 // 2. To calculate opening balance at range.start, we need all transactions from range.start to NOW
@@ -1045,8 +1238,8 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     return grn.status === 'Completed' && receivedDate >= range.start && receivedDate <= now;
                 });
                 const disbursedSinceStart = (requisitions || []).filter(req => {
-                    const reportDate = req.approvedAt || req.submittedAt || req.createdAt;
-                    return ['Completed', 'Ready', 'PartiallyApproved', 'Picking', 'Submitted'].includes(req.status) && reportDate && reportDate >= range.start && reportDate <= now;
+                    const reportDate = req.approvedAt || req.createdAt;
+                    return ['Completed', 'Ready', 'PartiallyApproved'].includes(req.status) && reportDate && reportDate >= range.start && reportDate <= now;
                 });
 
                 const tableData: any[] = products.map(p => {
@@ -1057,14 +1250,8 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                         .reduce((sum, item) => sum + item.quantityReceived, 0);
                         
                     const disbursedQtySinceStart = disbursedSinceStart.flatMap(req => {
-                        const status = req.status;
-                        return (req.items || []).filter(item => item.productId === p.id).map(item => ({...item, status}));
-                    }).reduce((sum, item) => {
-                        const approvedQty = (['Completed', 'Ready'].includes(item.status) && (item.approvedQuantity ?? 0) > 0)
-                            ? (item.approvedQuantity || 0)
-                            : (item.quantity || 0);
-                        return sum + approvedQty;
-                    }, 0);
+                        return (req.items || []).filter(item => item.productId === p.id).map(item => getApprovedItemQuantity(req, item));
+                    }).reduce((sum, approvedQty) => sum + approvedQty, 0);
 
                     const openingBalance = Math.max(0, currentStock - receivedQtySinceStart + disbursedQtySinceStart);
                     
@@ -1073,14 +1260,8 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                         .reduce((sum, item) => sum + item.quantityReceived, 0);
                         
                     const disbursedQtyInPeriod = disbursedInPeriod.flatMap(req => {
-                        const status = req.status;
-                        return (req.items || []).filter(item => item.productId === p.id).map(item => ({...item, status}));
-                    }).reduce((sum, item) => {
-                        const approvedQty = (['Completed', 'Ready'].includes(item.status) && (item.approvedQuantity ?? 0) > 0)
-                            ? (item.approvedQuantity || 0)
-                            : (item.quantity || 0);
-                        return sum + approvedQty;
-                    }, 0);
+                        return (req.items || []).filter(item => item.productId === p.id).map(item => getApprovedItemQuantity(req, item));
+                    }).reduce((sum, approvedQty) => sum + approvedQty, 0);
 
                     // Closing balance at range.end
                     // If range.end is in the future, it's current stock
@@ -1221,8 +1402,45 @@ export const ReportsView: React.FC<ReportsViewProps> = (props) => {
                     </select>
                 </div>
                  <div>
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200">ปีงบประมาณ</label>
-                    <input type="number" value={fiscalYearFilter} onChange={e => setFiscalYearFilter(Number(e.target.value))} className="mt-1 w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md"/>
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-200">ปีงบประมาณ</label>
+                        <span className="text-[11px] text-sky-600 dark:text-sky-400 font-medium">
+                            {getFiscalYearDateRangeUtil(fiscalYearFilter).label}
+                        </span>
+                    </div>
+                    <input type="number" value={fiscalYearFilter} onChange={e => {
+                        const fy = Number(e.target.value);
+                        setFiscalYearFilter(fy);
+                        const r = getFiscalYearDateRangeUtil(fy);
+                        setStartDate(toISODateString(r.start));
+                        setEndDate(toISODateString(r.end));
+                    }} className="mt-1 w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md"/>
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                        <button 
+                            type="button" 
+                            onClick={() => {
+                                setFiscalYearFilter(2569);
+                                const r = getFiscalYearDateRangeUtil(2569);
+                                setStartDate(toISODateString(r.start));
+                                setEndDate(toISODateString(r.end));
+                            }}
+                            className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${fiscalYearFilter === 2569 ? 'bg-sky-600 text-white border-sky-600 font-bold' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 hover:bg-slate-100'}`}
+                        >
+                            ปี 2569 (1 ต.ค. 68 - 30 ก.ย. 69)
+                        </button>
+                        <button 
+                            type="button" 
+                            onClick={() => {
+                                setFiscalYearFilter(2570);
+                                const r = getFiscalYearDateRangeUtil(2570);
+                                setStartDate(toISODateString(r.start));
+                                setEndDate(toISODateString(r.end));
+                            }}
+                            className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${fiscalYearFilter === 2570 ? 'bg-sky-600 text-white border-sky-600 font-bold' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 hover:bg-slate-100'}`}
+                        >
+                            ปี 2570 (เริ่ม 1 ต.ค. 69)
+                        </button>
+                    </div>
                 </div>
                 <div>
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-200">เลือกหน่วยงาน</label>

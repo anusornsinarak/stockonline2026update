@@ -26,8 +26,8 @@ import ArchiveBoxIcon from './icons/ArchiveBoxIcon';
 import ClipboardDocumentCheckIcon from './icons/ClipboardDocumentCheckIcon';
 import CogIcon from './icons/CogIcon';
 import ClockIcon from './icons/ClockIcon';
-import ArrowPathIcon from './icons/ArrowPathIcon';
 import LoadingScreen from './LoadingScreen';
+import { getFiscalYearDateRange } from '../utils';
 
 import { SummaryView } from './admin/SummaryView';
 import InventoryView from './admin/InventoryView';
@@ -476,10 +476,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                         onChange={(e) => setViewFiscalYear(parseInt(e.target.value))}
                         className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 block w-full p-2"
                     >
-                        <option value={nextFiscalYearBE}>{nextFiscalYearBE} (ปีปัจจุบัน)</option>
-                        <option value={currentFiscalYearBE}>{currentFiscalYearBE}</option>
-                        <option value={currentFiscalYearBE - 1}>{currentFiscalYearBE - 1}</option>
-                        <option value={currentFiscalYearBE - 2}>{currentFiscalYearBE - 2}</option>
+                        <option value={nextFiscalYearBE}>ปีงบประมาณ {nextFiscalYearBE} ({getFiscalYearDateRange(nextFiscalYearBE).label})</option>
+                        <option value={currentFiscalYearBE}>ปีงบประมาณ {currentFiscalYearBE} ({getFiscalYearDateRange(currentFiscalYearBE).label})</option>
+                        <option value={currentFiscalYearBE - 1}>ปีงบประมาณ {currentFiscalYearBE - 1} ({getFiscalYearDateRange(currentFiscalYearBE - 1).label})</option>
+                        <option value={currentFiscalYearBE - 2}>ปีงบประมาณ {currentFiscalYearBE - 2} ({getFiscalYearDateRange(currentFiscalYearBE - 2).label})</option>
                     </select>
                 </div>
             </div>

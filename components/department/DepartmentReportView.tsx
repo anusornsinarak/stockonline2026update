@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Department, Product, Requisition, DepartmentInventoryItem } from '../../types';
 import { supabaseService } from '../../services/supabaseService';
+import { getApprovedItemQuantity } from '../../utils';
 import LoadingScreen from '../LoadingScreen';
 import PrinterIcon from '../icons/PrinterIcon';
 import ShareIcon from '../icons/ShareIcon';
@@ -88,7 +89,7 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
 
         // 1. Process Requisitions
         const filteredReqs = requisitions.filter(req => {
-            if (!['Completed', 'Ready', 'PartiallyApproved', 'Picking'].includes(req.status)) return false;
+            if (!['Completed', 'Ready', 'PartiallyApproved'].includes(req.status)) return false;
             
             const rawDate = req.approvedAt || req.createdAt;
             if (!rawDate) return false;
@@ -101,9 +102,9 @@ const DepartmentReportView: React.FC<DepartmentReportViewProps> = ({ department 
             req.items?.forEach(item => {
                 if (selectedProductId !== 'all' && item.productId !== selectedProductId) return;
 
-                const approvedQty = item.approvedQuantity ?? item.quantity ?? 0;
+                const approvedQty = getApprovedItemQuantity(req, item);
                 
-                if (['Approved', 'Fulfilled', 'Loaned', 'LoanFulfilled'].includes(item.status) && approvedQty > 0) {
+                if (approvedQty > 0) {
                     const product = products.find(p => p.id === item.productId);
                     if (!product) return;
 

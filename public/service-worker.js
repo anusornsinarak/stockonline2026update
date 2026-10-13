@@ -1,4 +1,4 @@
-const CACHE_NAME = 'version-6';
+const CACHE_NAME = 'version-11-clean';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,7 +8,6 @@ const urlsToCache = [
   '/icons/apple-touch-icon.png'
 ];
 const SUPABASE_HOSTNAME = 'olfabhkhyfibanhsxwpg.supabase.co';
-
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -39,13 +38,24 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Never intercept or cache Vite internal assets, node_modules, HMR, or chunks with version hashes
+  if (
+    url.pathname.includes('/node_modules/') || 
+    url.pathname.includes('/.vite/') || 
+    url.pathname.startsWith('/@') || 
+    url.search.includes('?v=') ||
+    url.search.includes('&v=') ||
+    url.pathname.endsWith('.tsx') ||
+    url.pathname.endsWith('.ts')
+  ) {
+    return;
+  }
+
   // Always go to the network for Supabase API calls.
-  // Add a catch block to handle network failures (e.g., offline).
   if (url.hostname === SUPABASE_HOSTNAME) {
     event.respondWith(
       fetch(request).catch(error => {
         console.warn('Service Worker: Supabase API fetch failed, probably offline.', error);
-        // Create a synthetic Response to signal an error to the client-side code.
         return new Response(JSON.stringify({ message: 'Network error: The service worker could not connect to the API.' }), {
           status: 503,
           statusText: 'Service Unavailable',
@@ -55,28 +65,43 @@ self.addEventListener('fetch', event => {
     );
     return;
   }
+
+  // Network-First for HTML navigation and JS/CSS bundles to prevent chunk mismatch and duplicate React issues
+  if (request.mode === 'navigate' || request.destination === 'document' || url.pathname.includes('/assets/')) {
+    event.respondWith(
+      fetch(request)
+        .then(networkResponse => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(request).then(cached => {
+            if (cached) return cached;
+            if (request.mode === 'navigate') {
+              return caches.match('/index.html');
+            }
+          });
+        })
+    );
+    return;
+  }
   
-  // For other assets (the app shell, etc.), use a Stale-While-Revalidate strategy.
+  // For static assets (images, icons, fonts), use Stale-While-Revalidate
   event.respondWith(
     caches.open(CACHE_NAME).then(cache => {
       return cache.match(request).then(cachedResponse => {
-        // Fetch from network in parallel to update the cache for next time.
         const fetchPromise = fetch(request).then(networkResponse => {
           if (networkResponse && networkResponse.status === 200) {
             cache.put(request, networkResponse.clone());
           }
           return networkResponse;
-        }).catch(error => {
-            // If network fails, and we don't have a cache, it's a real error.
-            // For navigation requests, we can show an offline page.
-            console.error('Fetch failed; returning offline page if available.', error);
-            if (request.mode === 'navigate') {
-                return caches.match('/index.html');
-            }
-        });
+        }).catch(() => {});
 
-        // Return cached response if available, otherwise wait for the network response.
-        // This makes the app load instantly from cache.
         return cachedResponse || fetchPromise;
       });
     })

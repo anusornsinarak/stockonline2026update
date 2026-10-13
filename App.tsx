@@ -1,7 +1,6 @@
-import ExclamationTriangleIcon from "./components/icons/ExclamationTriangleIcon";
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
+import ExclamationTriangleIcon from "./components/icons/ExclamationTriangleIcon";
 import { User, Department, AppNotification, AppView, DocumentSettings } from './types';
 import { AdminDashboard } from './components/AdminDashboard';
 import Header from './components/Header';
@@ -55,6 +54,11 @@ const App: React.FC = () => {
   const [isRequisitionOpen] = useState(true);
   const [documentSettings, setDocumentSettings] = useState<DocumentSettings | null>(null);
   const [activeAnnouncement, setActiveAnnouncement] = useState<{ id: string | null; content: string; enabled: boolean; isOffCycleWeek?: boolean; systemClosed?: boolean; systemClosedMessage?: string; } | null>(null);
+  const [activeView, setActiveView] = useState<AppView>({ type: 'dashboard' });
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeChannelRef = useRef<RealtimeChannel | null>(null);
+  const lastFetchedNotificationId = useRef<number | null>(null);
 
   const fetchFySettings = useCallback(async () => {
     try {
@@ -72,11 +76,6 @@ const App: React.FC = () => {
   useEffect(() => {
     fetchFySettings();
   }, [fetchFySettings]);
-  const [activeView, setActiveView] = useState<AppView>({ type: 'dashboard' });
-  const [alertMessage, setAlertMessage] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const activeChannelRef = useRef<RealtimeChannel | null>(null);
-  const lastFetchedNotificationId = useRef<number | null>(null);
 
   const currentFiscalYearBE = useMemo(() => getFiscalYearBE(new Date()), []);
   const planningFiscalYearBE = 2569;
@@ -121,38 +120,46 @@ const App: React.FC = () => {
         Notification.requestPermission();
     }
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
-           if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
-               supabaseService.getUserProfile(session.user.id).then(u => {
-                   setUser(prev => (prev && prev.id === u?.id && prev.role === u?.role) ? prev : u);
-                   if(u?.departmentId) supabaseService.getDepartments().then(ds => {
-                       const found = ds.find(d => d.id === u.departmentId) || null;
-                       setDepartment(prev => (prev && prev.id === found?.id) ? prev : found);
-                   });
-               });
-           }
-      } else {
-        setUser(null);
-        setDepartment(null);
-        setNotifications([]);
-      }
-      setIsLoading(false);
+    const loadUserData = async (s: Session | null) => {
+        setSession(s);
+        if (!s?.user) {
+            setUser(null);
+            setDepartment(null);
+            setNotifications([]);
+            setIsLoading(false);
+            return;
+        }
+        try {
+            const u = await supabaseService.getUserProfile(s.user.id);
+            setUser(u);
+            if (u?.departmentId) {
+                const ds = await supabaseService.getDepartments();
+                const found = ds.find(d => d.id === u.departmentId) || null;
+                setDepartment(found);
+            } else {
+                setDepartment(null);
+            }
+        } catch (e) {
+            console.error("Failed loading user/department", e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, s) => {
+        if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
+            loadUserData(s);
+        } else if (_event === 'SIGNED_OUT') {
+            setSession(null);
+            setUser(null);
+            setDepartment(null);
+            setNotifications([]);
+            setIsLoading(false);
+        }
     });
     
-    supabase.auth.getSession().then(({ data: { session }}) => {
-        setSession(session);
-         if (session?.user) {
-           supabaseService.getUserProfile(session.user.id).then(u => {
-               setUser(prev => (prev && prev.id === u?.id && prev.role === u?.role) ? prev : u);
-               if(u?.departmentId) supabaseService.getDepartments().then(ds => {
-                   const found = ds.find(d => d.id === u.departmentId) || null;
-                   setDepartment(prev => (prev && prev.id === found?.id) ? prev : found);
-               });
-           });
-      }
-        setIsLoading(false);
+    supabase.auth.getSession().then(({ data: { session: s }}) => {
+        loadUserData(s);
     });
     return () => authListener.subscription.unsubscribe();
   }, []);
@@ -218,7 +225,11 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (activeAnnouncement?.systemClosed && user?.role !== 'Admin') {
+    // External departments and Admin can access normally even when system is temporarily closed
+    const isExternalDept = department?.type === 'External';
+    const canBypassSystemClosed = user?.role === 'Admin' || isExternalDept;
+
+    if (activeAnnouncement?.systemClosed && !canBypassSystemClosed) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-fade-in">
                 <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-full mb-6 mt-10">
@@ -228,6 +239,9 @@ const App: React.FC = () => {
                 <p className="text-xl font-bold text-slate-600 dark:text-slate-300 max-w-lg mx-auto bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
                     {activeAnnouncement.systemClosedMessage || 'ขออภัย ระบบกำลังปิดปรับปรุงชั่วคราว โปรดกลับมาใช้งานใหม่ภายหลัง'}
                 </p>
+                <div className="mt-4 px-4 py-2 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-300 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                    * หน่วยงานภายนอก รพ. (รพ.สต./หน่วยงานภายนอก) และผู้ดูแลระบบ ยังคงสามารถเข้าใช้งานและทำรายการเบิกหรือยืมได้ตามปกติ
+                </div>
             </div>
         );
     }

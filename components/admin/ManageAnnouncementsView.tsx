@@ -230,7 +230,10 @@ const ManageAnnouncementsView: React.FC = () => {
                     <div className="flex justify-between items-center bg-red-100 dark:bg-red-900/40 p-3 rounded-xl border border-red-300 dark:border-red-700 shadow-sm min-w-[280px]">
                         <div className="flex flex-col">
                             <span className="text-sm font-bold text-red-800 dark:text-red-300">ปิดระบบคลังชั่วคราว</span>
-                            <span className="text-xs text-red-600 dark:text-red-400 font-medium truncate max-w-[200px]">{activeConfig.systemClosedMessage || 'ระงับการใช้งานระบบ'}</span>
+                            <span className="text-xs text-red-700 dark:text-red-400 font-medium">หน่วยงานนอก รพ. ยังเข้าใช้และเบิก-ยืมได้ตามปกติ</span>
+                            {activeConfig.systemClosedMessage && (
+                                <span className="text-[11px] text-red-600 dark:text-red-400/80 truncate max-w-[200px]">ข้อความ: {activeConfig.systemClosedMessage}</span>
+                            )}
                         </div>
                         <button
                             onClick={async () => {
