@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Department, Product, Requisition, RequisitionStatus, requisitionStatusMap, User, InventoryItem, BackOrderItem, LoanItem, DocumentSettings } from '../../types';
 import { supabaseService } from '../../services/supabaseService';
 import TrashIcon from '../icons/TrashIcon';
@@ -45,19 +45,57 @@ type SubTab = 'all' | 'by_dept' | 'backorders';
 export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (props) => {
     const { requisitions, departments, allProducts, inventory, backorders, onDataChange, onViewPickingList, onOpenCreateForDeptModal, onOpenReturnModal, initialSubTab, documentSettings } = props;
     
-    const [activeSubTab, setActiveSubTab] = useState<SubTab>((initialSubTab as SubTab) || 'all');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [deptFilter, setDeptFilter] = useState('all');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [monthFilter, setMonthFilter] = useState('all');
+    const [activeSubTab, setActiveSubTab] = useState<SubTab>(() => {
+        return (initialSubTab as SubTab) || (sessionStorage.getItem('manage_req_subtab') as SubTab) || 'all';
+    });
+    const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem('manage_req_search') || '');
+    const [deptFilter, setDeptFilter] = useState(() => sessionStorage.getItem('manage_req_dept') || 'all');
+    const [statusFilter, setStatusFilter] = useState(() => sessionStorage.getItem('manage_req_status') || 'all');
+    const [monthFilter, setMonthFilter] = useState(() => sessionStorage.getItem('manage_req_month') || 'all');
     const [requisitionToPrint, setRequisitionToPrint] = useState<Requisition | null>(null);
     const [editingStatusReq, setEditingStatusReq] = useState<Requisition | null>(null);
     const [selectedReqForModal, setSelectedReqForModal] = useState<Requisition | null>(null);
     
-    const [currentPage, setCurrentPage] = useState(1);
+    const [currentPage, setCurrentPage] = useState<number>(() => {
+        const saved = sessionStorage.getItem('manage_req_page');
+        const num = saved ? parseInt(saved, 10) : 1;
+        return isNaN(num) || num < 1 ? 1 : num;
+    });
     const ITEMS_PER_PAGE = 10;
 
-    useEffect(() => { setCurrentPage(1); }, [searchTerm, deptFilter, statusFilter, monthFilter, activeSubTab]);
+    const isFirstMount = useRef(true);
+    useEffect(() => {
+        if (isFirstMount.current) {
+            isFirstMount.current = false;
+            return;
+        }
+        setCurrentPage(1);
+        sessionStorage.setItem('manage_req_page', '1');
+    }, [searchTerm, deptFilter, statusFilter, monthFilter, activeSubTab]);
+
+    useEffect(() => {
+        sessionStorage.setItem('manage_req_subtab', activeSubTab);
+    }, [activeSubTab]);
+
+    useEffect(() => {
+        sessionStorage.setItem('manage_req_search', searchTerm);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        sessionStorage.setItem('manage_req_dept', deptFilter);
+    }, [deptFilter]);
+
+    useEffect(() => {
+        sessionStorage.setItem('manage_req_status', statusFilter);
+    }, [statusFilter]);
+
+    useEffect(() => {
+        sessionStorage.setItem('manage_req_month', monthFilter);
+    }, [monthFilter]);
+
+    useEffect(() => {
+        sessionStorage.setItem('manage_req_page', String(currentPage));
+    }, [currentPage]);
 
     useEffect(() => {
         if (requisitionToPrint) {
@@ -96,12 +134,20 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
         }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [requisitions, searchTerm, deptFilter, statusFilter, monthFilter, departmentMap]);
 
-    const paginatedRequisitions = useMemo(() => {
-        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-        return filteredRequisitions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-    }, [filteredRequisitions, currentPage]);
+    const totalPages = Math.max(1, Math.ceil(filteredRequisitions.length / ITEMS_PER_PAGE));
+    const safePage = Math.min(currentPage, totalPages);
 
-    const totalPages = Math.ceil(filteredRequisitions.length / ITEMS_PER_PAGE);
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+            sessionStorage.setItem('manage_req_page', String(totalPages));
+        }
+    }, [currentPage, totalPages]);
+
+    const paginatedRequisitions = useMemo(() => {
+        const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+        return filteredRequisitions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [filteredRequisitions, safePage]);
 
     const monthOptions = useMemo(() => {
         const months = new Set<string>();
@@ -298,19 +344,19 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                             {totalPages > 1 && (
                                 <div className="px-6 py-4 bg-slate-50 dark:bg-slate-900/50 border-t dark:border-slate-700 flex items-center justify-between">
                                     <div className="text-sm text-slate-500 font-medium">
-                                        แสดงหน้า {currentPage} จาก {totalPages} (ทั้งหมด {filteredRequisitions.length} รายการ)
+                                        แสดงหน้า {safePage} จาก {totalPages} (ทั้งหมด {filteredRequisitions.length} รายการ)
                                     </div>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                            disabled={currentPage === 1}
+                                            disabled={safePage <= 1}
                                             className="px-4 py-2 border rounded-lg bg-white dark:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-bold shadow-sm"
                                         >
                                             ย้อนกลับ
                                         </button>
                                         <button
                                             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                            disabled={currentPage === totalPages}
+                                            disabled={safePage >= totalPages}
                                             className="px-4 py-2 border rounded-lg bg-white dark:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-bold shadow-sm"
                                         >
                                             ถัดไป

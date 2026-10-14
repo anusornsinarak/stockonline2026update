@@ -167,12 +167,18 @@ const App: React.FC = () => {
   useEffect(() => {
       if (user?.id) {
           fetchNotifications(true);
+          if (user.role === 'Admin' || user.role === 'Warehouse') {
+              supabaseService.checkAndNotifyLowStock().catch(() => {});
+          }
           const interval = setInterval(() => {
               fetchNotifications();
+              if (user.role === 'Admin' || user.role === 'Warehouse') {
+                  supabaseService.checkAndNotifyLowStock().catch(() => {});
+              }
           }, 60000);
           return () => clearInterval(interval);
       }
-  }, [user?.id, fetchNotifications]);
+  }, [user?.id, user?.role, fetchNotifications]);
 
   useEffect(() => {
       if (!user?.id) {
@@ -248,47 +254,69 @@ const App: React.FC = () => {
     if (user?.role === 'Borrower') {
         return <LoanSystemView departments={[]} allProducts={[]} currentUser={user} isPublicMode={true} />;
     }
-    if (activeView.type === 'dashboard') return <MainDashboard user={user!} onNavigate={setActiveView} />;
-    if (user?.role === 'Admin' && activeView.type === 'admin') {
-      return <AdminDashboard 
-                user={user} 
-                isSurveyManuallyOpen={fySettings.fy_survey_open}
-                isSurveyAutoOpen={false}
-                onToggleSurvey={() => {}}
-                isRequisitionOpen={isRequisitionOpen}
-                onToggleRequisition={() => {}}
-                onDataChange={() => {
-                    fetchNotifications(true);
-                    fetchFySettings();
-                }}
-                onSettingsChange={fetchDocumentSettings}
-                initialTab={activeView.payload}
-                documentSettings={documentSettings}
-                currentFiscalYearBE={currentFiscalYearBE}
-                nextFiscalYearBE={fySettings.fy_survey_year}
-                stopAlert={() => setAlertMessage(null)}
-             />;
-    }
-    if (user?.role === 'Department' && department && activeView.type === 'department') {
-      return <DepartmentPortal 
-                user={user}
-                department={department}
-                isSurveyOpen={fySettings.fy_survey_open}
-                isSurveyForce={fySettings.fy_survey_force}
-                surveyTitle={`แบบสำรวจความต้องการเวชภัณฑ์มิใช่ยา ประจำปีงบประมาณ ${fySettings.fy_survey_year}`}
-                isRequisitionOpen={isRequisitionOpen}
-                initialTab={activeView.payload}
-                documentSettings={documentSettings}
-                nextFiscalYearBE={fySettings.fy_survey_year}
-                stopAlert={() => setAlertMessage(null)}
-                onDataChange={() => fetchNotifications(true)}
-                onNavigateToDashboard={() => setActiveView({ type: 'dashboard' })}
-             />;
-    }
-    if (user?.role === 'Warehouse' && activeView.type === 'warehouse') {
-        return <WarehousePortal user={user} nextFiscalYearBE={fySettings.fy_survey_year} initialTab={activeView.payload} stopAlert={() => setAlertMessage(null)} />;
-    }
-    return <MainDashboard user={user!} onNavigate={setActiveView} />;
+
+    const isDashboard = activeView.type === 'dashboard';
+    const isAdmin = user?.role === 'Admin' && activeView.type === 'admin';
+    const isWarehouse = user?.role === 'Warehouse' && activeView.type === 'warehouse';
+    const isDepartment = user?.role === 'Department' && !!department && activeView.type === 'department';
+
+    return (
+      <>
+        <div className={isDashboard ? 'block animate-fade-in' : 'hidden'}>
+          <MainDashboard user={user!} onNavigate={setActiveView} />
+        </div>
+        {user?.role === 'Admin' && (
+          <div className={isAdmin ? 'block animate-fade-in' : 'hidden'}>
+            <AdminDashboard 
+              user={user} 
+              isSurveyManuallyOpen={fySettings.fy_survey_open}
+              isSurveyAutoOpen={false}
+              onToggleSurvey={() => {}}
+              isRequisitionOpen={isRequisitionOpen}
+              onToggleRequisition={() => {}}
+              onDataChange={() => {
+                  fetchNotifications(true);
+                  fetchFySettings();
+              }}
+              onSettingsChange={fetchDocumentSettings}
+              initialTab={activeView.payload}
+              documentSettings={documentSettings}
+              currentFiscalYearBE={currentFiscalYearBE}
+              nextFiscalYearBE={fySettings.fy_survey_year}
+              stopAlert={() => setAlertMessage(null)}
+            />
+          </div>
+        )}
+        {user?.role === 'Department' && department && (
+          <div className={isDepartment ? 'block animate-fade-in' : 'hidden'}>
+            <DepartmentPortal 
+              user={user}
+              department={department}
+              isSurveyOpen={fySettings.fy_survey_open}
+              isSurveyForce={fySettings.fy_survey_force}
+              surveyTitle={`แบบสำรวจความต้องการเวชภัณฑ์มิใช่ยา ประจำปีงบประมาณ ${fySettings.fy_survey_year}`}
+              isRequisitionOpen={isRequisitionOpen}
+              initialTab={activeView.payload}
+              documentSettings={documentSettings}
+              nextFiscalYearBE={fySettings.fy_survey_year}
+              stopAlert={() => setAlertMessage(null)}
+              onDataChange={() => fetchNotifications(true)}
+              onNavigateToDashboard={() => setActiveView({ type: 'dashboard' })}
+            />
+          </div>
+        )}
+        {user?.role === 'Warehouse' && (
+          <div className={isWarehouse ? 'block animate-fade-in' : 'hidden'}>
+            <WarehousePortal 
+              user={user} 
+              nextFiscalYearBE={fySettings.fy_survey_year} 
+              initialTab={activeView.payload} 
+              stopAlert={() => setAlertMessage(null)} 
+            />
+          </div>
+        )}
+      </>
+    );
   };
   
   const getHeaderTitle = () => {

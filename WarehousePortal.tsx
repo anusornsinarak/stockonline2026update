@@ -21,6 +21,7 @@ import DocumentPlusIcon from './components/icons/DocumentPlusIcon';
 import LoadingScreen from './components/LoadingScreen';
 
 import { LoanSystemView } from './components/admin/LoanSystemView';
+import { LowStockAlertBanner, LowStockItem } from './components/admin/LowStockAlertBanner';
 
 type MergedWarehouseTab = 'requisitions' | 'receipts' | 'stockCard' | 'reports' | 'loanSystem';
 
@@ -89,7 +90,7 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
     }, [initialTab]);
 
     const fetchData = useCallback(async (isBackground: boolean = false) => {
-        if (!isBackground) setIsLoading(true);
+        if (!isBackground && products.length === 0) setIsLoading(true);
         setError(null);
         try {
             const [reqs, depts, prods, inv, pos, plan, surveys, usage, settings, allLoansFromDb, grns, comps] = await Promise.all([
@@ -195,6 +196,7 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
                 documentReceiverName: settings.document_receiver_name,
                 documentReceiverPosition: settings.document_receiver_position
             });
+            supabaseService.checkAndNotifyLowStock().catch(e => console.error(e));
         } catch (err) {
             console.error(err);
             setError("ไม่สามารถโหลดข้อมูลได้");
@@ -202,6 +204,22 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
             setIsLoading(false);
         }
     }, []);
+
+    const lowStockItems = useMemo<LowStockItem[]>(() => {
+        if (!products || !inventory) return [];
+        const invMap = new Map((inventory || []).map(i => [i.productId, i.quantity]));
+        return (products || []).filter(p => {
+            if (p.minStock === null || p.minStock === undefined || p.minStock <= 0) return false;
+            const currentStock = invMap.get(p.id) ?? 0;
+            return currentStock < p.minStock;
+        }).map(p => ({
+            product: p,
+            currentStock: invMap.get(p.id) ?? 0,
+            minStock: Number(p.minStock),
+            maxStock: p.maxStock !== null && p.maxStock !== undefined ? Number(p.maxStock) : null,
+            deficit: Number(p.minStock) - Number(invMap.get(p.id) || 0)
+        }));
+    }, [products, inventory]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -314,27 +332,25 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
         }
     };
 
-    if (isLoading) return <LoadingScreen message="กำลังโหลดข้อมูลพื้นฐาน..." />;
+    if (isLoading && products.length === 0) return <LoadingScreen message="กำลังโหลดข้อมูลพื้นฐาน..." />;
     if (error) return <div className="max-w-7xl mx-auto bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-lg text-center text-red-600">{error}</div>;
 
-    if (requisitionForPickingView) {
-        return (
-            <PickingView
-                requisition={requisitionForPickingView}
-                allProducts={products}
-                inventoryMap={new Map(inventory.map(i => [i.productId, i.quantity]))}
-                onClose={handleClosePickingView}
-                isPreview={isPickingPreview}
-                onItemsUpdated={() => fetchData(true)}
-                onProcessRequisitionWithStock={handleProcessRequisition}
-                onProcessSimple={handleSimpleApproval}
-                documentSettings={documentSettings}
-            />
-        );
-    }
-
     return (
-        <div className="max-w-7xl mx-auto bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-lg">
+        <>
+            {requisitionForPickingView && (
+                <PickingView
+                    requisition={requisitionForPickingView}
+                    allProducts={products}
+                    inventoryMap={new Map(inventory.map(i => [i.productId, i.quantity]))}
+                    onClose={handleClosePickingView}
+                    isPreview={isPickingPreview}
+                    onItemsUpdated={() => fetchData(true)}
+                    onProcessRequisitionWithStock={handleProcessRequisition}
+                    onProcessSimple={handleSimpleApproval}
+                    documentSettings={documentSettings}
+                />
+            )}
+            <div className={requisitionForPickingView ? 'hidden' : 'max-w-7xl mx-auto bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-lg'}>
              {showRefreshBanner && (
                 <div className="sticky top-0 z-10 mb-4 animate-fade-in -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 p-2">
                     <div className="bg-sky-100 dark:bg-sky-900 border-b border-sky-300 dark:border-sky-700 text-sky-800 dark:text-sky-200 px-4 py-3 shadow-lg flex items-center justify-between rounded-t-2xl">
@@ -347,11 +363,29 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
                 <nav className="-mb-px flex space-x-8">
                     <button onClick={() => handleChangeTab('requisitions')} className={`${activeTab === 'requisitions' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'} flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors`}><ClipboardDocumentListIcon className="w-5 h-5 mr-2" />รายการเบิก</button>
                     {user.permissions?.canManageReceipts && <button onClick={() => handleChangeTab('receipts')} className={`${activeTab === 'receipts' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'} flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors`}><InboxArrowDownIcon className="w-5 h-5 mr-2" />รับของ</button>}
-                    {user.permissions?.canViewStockCard && <button onClick={() => handleChangeTab('stockCard')} className={`${activeTab === 'stockCard' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'} flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors`}><CubeIcon className="w-5 h-5 mr-2" />คลัง/สต็อกการ์ด</button>}
+                    {user.permissions?.canViewStockCard && (
+                        <button onClick={() => handleChangeTab('stockCard')} className={`${activeTab === 'stockCard' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'} flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors`}>
+                            <CubeIcon className="w-5 h-5 mr-2" />
+                            <span>คลัง/สต็อกการ์ด</span>
+                            {lowStockItems.length > 0 && (
+                                <span className="ml-2 px-2 py-0.5 text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 rounded-full">
+                                    ⚠️ {lowStockItems.length}
+                                </span>
+                            )}
+                        </button>
+                    )}
                     <button onClick={() => handleChangeTab('loanSystem')} className={`${activeTab === 'loanSystem' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'} flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors`}><ArrowPathIcon className="w-5 h-5 mr-2" />ระบบยืม-คืน</button>
                     {user.permissions?.canViewReports && <button onClick={() => handleChangeTab('reports')} className={`${activeTab === 'reports' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'} flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors`}><ChartBarIcon className="w-5 h-5 mr-2" />รายงาน</button>}
                 </nav>
             </div>
+
+            <LowStockAlertBanner
+                lowStockItems={lowStockItems}
+                role="Warehouse"
+                onNavigateToStockCard={() => setActiveTab('stockCard')}
+                onRecheck={() => fetchData(true)}
+            />
+
             {renderContent()}
             {isCreateForDeptModalOpen && (
                 <CreateRequisitionForDeptModal
@@ -366,6 +400,7 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
                 />
             )}
         </div>
+        </>
     );
 };
 

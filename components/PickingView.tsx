@@ -14,6 +14,7 @@ import ExclamationTriangleIcon from './icons/ExclamationTriangleIcon';
 import MinusIcon from './icons/MinusIcon';
 import { PickingListPrintView } from './admin/PickingListPrintView';
 import ExclamationCircleIcon from './icons/ExclamationCircleIcon';
+import ArchiveBoxArrowDownIcon from './icons/ArchiveBoxArrowDownIcon';
 
 import { Personnel } from '../types';
 
@@ -22,6 +23,7 @@ interface PickingViewProps {
     allProducts: Product[];
     inventoryMap: Map<string, number>;
     onClose: () => void;
+    onNavigateToReceipts?: () => void;
     isPreview?: boolean;
     onItemsUpdated: () => void;
     onStockUpdated?: () => void;
@@ -31,7 +33,7 @@ interface PickingViewProps {
     personnel?: Personnel[];
 }
 
-const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inventoryMap, onClose, isPreview = false, onItemsUpdated, onStockUpdated, onProcessRequisitionWithStock, onProcessSimple, documentSettings, personnel }) => {
+const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inventoryMap, onClose, onNavigateToReceipts, isPreview = false, onItemsUpdated, onStockUpdated, onProcessRequisitionWithStock, onProcessSimple, documentSettings, personnel }) => {
     const [items, setItems] = useState<RequisitionItem[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [addItemSearch, setAddItemSearch] = useState('');
@@ -39,6 +41,18 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
     const [showBackorderModal, setShowBackorderModal] = useState(false);
     const [partialItems, setPartialItems] = useState<RequisitionItem[]>([]);
     const [backorderActions, setBackorderActions] = useState<Record<number, 'create' | 'cancel'>>({});
+    
+    // Stock shortfall handling states
+    const [showStockShortfallModal, setShowStockShortfallModal] = useState(false);
+    const [shortfallItems, setShortfallItems] = useState<{
+        item: RequisitionItem;
+        stock: number;
+        shortfall: number;
+    }[]>([]);
+    const [selectedGlobalAction, setSelectedGlobalAction] = useState<'borrow' | 'backorder' | 'cancel' | 'reject'>('borrow');
+    const [itemActionOverrides, setItemActionOverrides] = useState<Record<number, 'borrow' | 'backorder' | 'cancel' | 'reject'>>({});
+    const [toastNotification, setToastNotification] = useState<string | null>(null);
+
     const [deptInventory, setDeptInventory] = useState<any[]>([]);
     const [requisitionHistory, setRequisitionHistory] = useState<Requisition[]>([]);
     const draftSaveTimeout = useRef<number | null>(null);
@@ -246,10 +260,168 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
         }
     };
 
+    const handleGoToReceipts = () => {
+        if (items.length > 0) {
+            safeSetStorage(`picking_draft_${requisition.id}`, JSON.stringify(items));
+        }
+        setShowStockShortfallModal(false);
+        if (onNavigateToReceipts) {
+            onNavigateToReceipts();
+        } else {
+            onClose();
+        }
+    };
+
+    const handleApplyGlobalAction = (action: 'borrow' | 'backorder' | 'cancel' | 'reject') => {
+        setSelectedGlobalAction(action);
+        const updatedOverrides: Record<number, 'borrow' | 'backorder' | 'cancel' | 'reject'> = {};
+        shortfallItems.forEach(s => {
+            updatedOverrides[s.item.id] = action;
+        });
+        setItemActionOverrides(updatedOverrides);
+    };
+
+    const handleApplyAdjustedStock = () => {
+        setItems(prevItems => prevItems.map(item => {
+            const shortfallEntry = shortfallItems.find(s => s.item.id === item.id);
+            if (!shortfallEntry) return item;
+
+            const stock = shortfallEntry.stock;
+            const requested = item.quantity;
+            const action = itemActionOverrides[item.id] || selectedGlobalAction;
+            const shortfall = Math.max(0, requested - stock);
+
+            let newApprovedQty = Math.max(0, stock);
+            let newStatus: RequisitionItemStatus = item.status;
+            let newRejectReason = item.rejectReason;
+
+            if (stock === 0) {
+                if (action === 'borrow') {
+                    newStatus = 'Loaned';
+                    newApprovedQty = requested;
+                    newRejectReason = 'สต็อกในคลังเป็น 0 ปรับเป็นการยืมทั้งหมด';
+                } else if (action === 'backorder') {
+                    newStatus = 'Backordered';
+                    newApprovedQty = 0;
+                    newRejectReason = 'สต็อกในคลังเป็น 0 ตั้งเป็นค้างจ่าย';
+                } else if (action === 'reject') {
+                    newStatus = 'Rejected';
+                    newApprovedQty = 0;
+                    newRejectReason = 'สต็อกในคลังเป็น 0 ไม่อนุมัติจ่าย';
+                } else if (action === 'cancel') {
+                    newStatus = 'Approved';
+                    newApprovedQty = 0;
+                    newRejectReason = 'สต็อกในคลังเป็น 0 ยกเลิกรายการจ่าย';
+                }
+            } else {
+                newApprovedQty = stock;
+                if (action === 'borrow') {
+                    newStatus = 'Loaned';
+                    newRejectReason = `จ่ายตามสต็อก ${stock} ชิ้น ส่วนที่ขาด ${shortfall} ชิ้นปรับเป็นยืม`;
+                } else if (action === 'backorder') {
+                    newStatus = 'Backordered';
+                    newRejectReason = `จ่ายตามสต็อก ${stock} ชิ้น ส่วนที่ขาด ${shortfall} ชิ้นตั้งค้างจ่าย`;
+                } else if (action === 'cancel') {
+                    newStatus = 'Approved';
+                    newRejectReason = `จ่ายตามสต็อก ${stock} ชิ้น ยกเลิกส่วนที่เหลือ`;
+                } else if (action === 'reject') {
+                    newStatus = 'Approved';
+                    newRejectReason = `จ่ายตามสต็อก ${stock} ชิ้น ส่วนที่ขาด ${shortfall} ชิ้นไม่อนุมัติ`;
+                }
+            }
+
+            return {
+                ...item,
+                approvedQuantity: newApprovedQty,
+                status: newStatus,
+                rejectReason: newRejectReason
+            };
+        }));
+
+        setShowStockShortfallModal(false);
+        setToastNotification('ระบบได้ปรับยอดจ่ายเท่าที่มีในสต็อกและจัดการส่วนที่เหลือตามตัวเลือกเรียบร้อยแล้ว');
+        setTimeout(() => setToastNotification(null), 5000);
+    };
+
+    const handleCheckStock = () => {
+        const shortages: {
+            item: RequisitionItem;
+            stock: number;
+            shortfall: number;
+        }[] = [];
+
+        items.forEach(item => {
+            if (item.status === 'Rejected') return;
+            const stock = Math.max(0, inventoryMap.get(item.productId) ?? 0);
+            const qtyToCheck = (item.approvedQuantity !== undefined && item.approvedQuantity !== null && item.approvedQuantity > 0)
+                ? item.approvedQuantity
+                : item.quantity;
+
+            if (qtyToCheck > stock || stock === 0) {
+                shortages.push({
+                    item,
+                    stock,
+                    shortfall: Math.max(0, qtyToCheck - stock) || (stock === 0 ? item.quantity : 1)
+                });
+            }
+        });
+
+        if (shortages.length > 0) {
+            setShortfallItems(shortages);
+            const initialOverrides: Record<number, 'borrow' | 'backorder' | 'cancel' | 'reject'> = {};
+            shortages.forEach(s => {
+                initialOverrides[s.item.id] = selectedGlobalAction;
+            });
+            setItemActionOverrides(initialOverrides);
+            setShowStockShortfallModal(true);
+        } else {
+            setToastNotification('เวชภัณฑ์ทุกรายการมีสต็อกในคลังเพียงพอสำหรับการจ่าย');
+            setTimeout(() => setToastNotification(null), 3500);
+        }
+    };
+
     const handleConfirmAndSave = async () => {
         if (isPreview || isProcessing) return;
+
+        // 1. Check for stock shortages first
+        const shortages: {
+            item: RequisitionItem;
+            stock: number;
+            shortfall: number;
+        }[] = [];
+
+        items.forEach(item => {
+            if (item.status === 'Rejected') return;
+            const stock = Math.max(0, inventoryMap.get(item.productId) ?? 0);
+            const approvedQty = item.approvedQuantity || 0;
+
+            if (approvedQty > stock) {
+                shortages.push({
+                    item,
+                    stock,
+                    shortfall: approvedQty - stock
+                });
+            } else if (stock === 0 && approvedQty > 0) {
+                shortages.push({
+                    item,
+                    stock: 0,
+                    shortfall: approvedQty
+                });
+            }
+        });
+
+        if (shortages.length > 0) {
+            setShortfallItems(shortages);
+            const initialOverrides: Record<number, 'borrow' | 'backorder' | 'cancel' | 'reject'> = {};
+            shortages.forEach(s => {
+                initialOverrides[s.item.id] = selectedGlobalAction;
+            });
+            setItemActionOverrides(initialOverrides);
+            setShowStockShortfallModal(true);
+            return;
+        }
         
-        // Check for partial approvals that need confirmation
+        // 2. Check for partial approvals that need confirmation
         const partials = items.filter(item => 
             item.approvedQuantity > 0 && 
             item.approvedQuantity < item.quantity && 
@@ -338,6 +510,189 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
         <div className="animate-fade-in">
             {requisitionToPrint && <PickingListPrintView requisition={requisitionToPrint} departmentName={requisitionToPrint.departmentName || ''} documentSettings={documentSettings} personnel={personnel} />}
             
+            {/* Modal: ตรวจสอบสต็อกไม่พอจ่าย หรือสต็อกเป็น 0 */}
+            <Modal
+                isOpen={showStockShortfallModal}
+                onClose={() => setShowStockShortfallModal(false)}
+                title="แจ้งเตือน: เวชภัณฑ์ในสต็อกไม่พอจ่าย หรือสต็อกเป็น 0"
+                size="2xl"
+            >
+                <div className="space-y-5">
+                    <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100 rounded-xl border border-amber-200 dark:border-amber-800">
+                        <ExclamationTriangleIcon className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                            <p className="font-bold text-sm">
+                                พบเวชภัณฑ์ {shortfallItems.length} รายการ ที่สต็อกในคลังไม่พอจ่าย หรือมีสต็อกเป็น 0
+                            </p>
+                            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                                ท่านสามารถเลือกให้รับของเข้าระบบก่อน หรือปรับจ่ายเท่าที่มีในสต็อก พร้อมกำหนดการจัดการสำหรับจำนวนส่วนที่ขาด/ส่วนที่เหลือได้ทันที
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Option 1: ต้องการรับของเข้าระบบก่อน */}
+                    <div className="p-4 bg-sky-50 dark:bg-sky-950/30 rounded-xl border border-sky-200 dark:border-sky-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2.5 bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 rounded-lg flex-shrink-0">
+                                <ArchiveBoxArrowDownIcon className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                                    ทางเลือกที่ 1: รับของเข้าระบบก่อน แล้วค่อยกลับมาอนุมัติ
+                                </h4>
+                                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                                    ระบบจะบันทึกร่างใบเบิกนี้ไว้ให้อัตโนมัติ เพื่อให้ท่านไปบันทึกรับของเข้าระบบ (Receipts) ก่อน แล้วจึงกลับมาอนุมัติใบเบิกนี้
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleGoToReceipts}
+                            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg shadow-sm whitespace-nowrap flex items-center gap-1.5 transition-all flex-shrink-0"
+                        >
+                            <ArchiveBoxArrowDownIcon className="w-4 h-4" />
+                            <span>ไปหน้ารับของเข้าระบบ</span>
+                        </button>
+                    </div>
+
+                    {/* Option 2: ปรับจ่ายเท่าที่มี และจัดการส่วนที่เหลือ */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                        <div>
+                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                                ทางเลือกที่ 2: ปรับจ่ายเท่าที่มีในสต็อก (ถ้าสต็อกเป็น 0 จะจ่าย 0)
+                            </h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                กำหนดวิธีจัดการสำหรับจำนวนส่วนที่ขาด/ส่วนที่เหลือ (เลือกพร้อมกันทั้งหมด หรือเลือกแยกรายตัวด้านล่าง):
+                            </p>
+                        </div>
+
+                        {/* Quick Selection Buttons */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleApplyGlobalAction('borrow')}
+                                className={`p-2.5 rounded-lg border text-center transition-all ${
+                                    selectedGlobalAction === 'borrow'
+                                        ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-500 ring-2 ring-purple-300 dark:ring-purple-700'
+                                        : 'bg-white dark:bg-slate-700 border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className="font-bold text-xs text-purple-700 dark:text-purple-300">ปรับเป็นยืม</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400">ส่วนที่ขาดปรับเป็นยืม</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleApplyGlobalAction('backorder')}
+                                className={`p-2.5 rounded-lg border text-center transition-all ${
+                                    selectedGlobalAction === 'backorder'
+                                        ? 'bg-orange-50 dark:bg-orange-950/40 border-orange-500 ring-2 ring-orange-300 dark:ring-orange-700'
+                                        : 'bg-white dark:bg-slate-700 border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className="font-bold text-xs text-orange-700 dark:text-orange-300">ค้างจ่าย</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400">ส่วนที่ขาดตั้งค้างจ่าย</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleApplyGlobalAction('cancel')}
+                                className={`p-2.5 rounded-lg border text-center transition-all ${
+                                    selectedGlobalAction === 'cancel'
+                                        ? 'bg-slate-200 dark:bg-slate-600 border-slate-500 ring-2 ring-slate-300 dark:ring-slate-500'
+                                        : 'bg-white dark:bg-slate-700 border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className="font-bold text-xs text-slate-700 dark:text-slate-200">ยกเลิก</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400">ตัดยอดส่วนที่ขาดทิ้ง</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleApplyGlobalAction('reject')}
+                                className={`p-2.5 rounded-lg border text-center transition-all ${
+                                    selectedGlobalAction === 'reject'
+                                        ? 'bg-red-50 dark:bg-red-950/40 border-red-500 ring-2 ring-red-300 dark:ring-red-700'
+                                        : 'bg-white dark:bg-slate-700 border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className="font-bold text-xs text-red-700 dark:text-red-300">ไม่อนุมัติ</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400">ส่วนที่ขาดไม่อนุมัติ</div>
+                            </button>
+                        </div>
+
+                        {/* List of Shortfall Items with Per-Item Control */}
+                        <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+                            <table className="min-w-full text-xs">
+                                <thead className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 sticky top-0">
+                                    <tr>
+                                        <th className="p-2 text-left">เวชภัณฑ์</th>
+                                        <th className="p-2 text-center">ขอเบิก</th>
+                                        <th className="p-2 text-center">สต็อกในคลัง</th>
+                                        <th className="p-2 text-center">ปรับจ่าย</th>
+                                        <th className="p-2 text-center">ส่วนที่ขาด</th>
+                                        <th className="p-2 text-left">การจัดการส่วนที่ขาด</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y dark:divide-slate-700 bg-white dark:bg-slate-800">
+                                    {shortfallItems.map(({ item, stock, shortfall }) => {
+                                        const product = item.product || productMap.get(item.productId);
+                                        const action = itemActionOverrides[item.id] || selectedGlobalAction;
+                                        return (
+                                            <tr key={item.id}>
+                                                <td className="p-2">
+                                                    <div className="font-semibold text-slate-800 dark:text-slate-100">{product?.name || item.productId}</div>
+                                                    <div className="text-[10px] text-slate-500">หน่วย: {product?.unit || '-'}</div>
+                                                </td>
+                                                <td className="p-2 text-center font-bold text-slate-700 dark:text-slate-300">{item.quantity}</td>
+                                                <td className="p-2 text-center">
+                                                    <span className={`px-2 py-0.5 rounded font-bold ${stock === 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                                        {stock}
+                                                    </span>
+                                                </td>
+                                                <td className="p-2 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                                                    {stock}
+                                                </td>
+                                                <td className="p-2 text-center font-bold text-red-600 dark:text-red-400">
+                                                    {shortfall}
+                                                </td>
+                                                <td className="p-2">
+                                                    <select
+                                                        value={action}
+                                                        onChange={e => setItemActionOverrides(prev => ({ ...prev, [item.id]: e.target.value as any }))}
+                                                        className="p-1 border rounded text-xs dark:bg-slate-700 dark:border-slate-600 font-semibold"
+                                                    >
+                                                        <option value="borrow">ยืม (ขาด {shortfall})</option>
+                                                        <option value="backorder">ค้างจ่าย (ขาด {shortfall})</option>
+                                                        <option value="cancel">ยกเลิกส่วนที่ขาด</option>
+                                                        <option value="reject">ไม่อนุมัติส่วนที่ขาด</option>
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-2 border-t dark:border-slate-700">
+                            <button
+                                type="button"
+                                onClick={() => setShowStockShortfallModal(false)}
+                                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                            >
+                                กลับไปแก้ไขเอง
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleApplyAdjustedStock}
+                                className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+                            >
+                                <CheckCircleIcon className="w-4 h-4" />
+                                <span>ปรับจ่ายเท่าที่มีตามตัวเลือกนี้</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Modal>
+
             <Modal
                 isOpen={showBackorderModal}
                 onClose={() => setShowBackorderModal(false)}
@@ -443,12 +798,21 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                             <span>พิมพ์ใบจัดของ</span>
                         </button>
                         {!isPreview && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
+                                <button 
+                                    type="button"
+                                    onClick={handleCheckStock}
+                                    className="flex items-center gap-1.5 bg-amber-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-amber-700 shadow-sm transition-all text-sm"
+                                    title="ตรวจสอบสต็อกในคลังกลาง หรือปรับจ่ายเท่าที่มี"
+                                >
+                                    <ExclamationTriangleIcon className="w-5 h-5"/>
+                                    <span>ตรวจสต็อก/ปรับจ่ายเท่าที่มี</span>
+                                </button>
                                 <button 
                                     onClick={() => {
                                         setItems(prev => prev.map(item => ({ ...item, approvedQuantity: item.quantity })));
                                     }}
-                                    className="flex items-center gap-2 bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-700 shadow-sm transition-all"
+                                    className="flex items-center gap-1.5 bg-emerald-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-emerald-700 shadow-sm transition-all text-sm"
                                 >
                                     <CheckCircleIcon className="w-5 h-5"/>
                                     <span>อนุมัติทั้งหมดตามที่ขอ</span>
@@ -459,7 +823,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                                             setItems(prev => prev.map(item => ({ ...item, approvedQuantity: 0 })));
                                         }
                                     }}
-                                    className="flex items-center gap-2 bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-300 shadow-sm transition-all"
+                                    className="flex items-center gap-1.5 bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 shadow-sm transition-all text-sm"
                                 >
                                     <TrashIcon className="w-5 h-5"/>
                                     <span>ล้างเป็น 0 ทั้งหมด</span>
@@ -470,6 +834,15 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                 </div>
 
                 <div className="space-y-3">
+                    {toastNotification && (
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 rounded-lg text-sm font-medium flex items-center justify-between shadow-sm animate-fade-in">
+                            <div className="flex items-center gap-2">
+                                <CheckCircleIcon className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                                <span>{toastNotification}</span>
+                            </div>
+                            <button type="button" onClick={() => setToastNotification(null)} className="text-emerald-700 hover:text-emerald-900 text-xs font-bold">ปิด</button>
+                        </div>
+                    )}
                     {!isPreview && (
                         <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 rounded-lg">
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">ค้นหาและเพิ่มรายการพิเศษ</label>
@@ -496,7 +869,8 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                                     <th className="p-2 text-center text-sm font-semibold">Min/Max</th>
                                     <th className="p-2 text-center text-sm font-semibold">อนุมัติก่อน</th>
                                     <th className="p-2 text-center text-sm font-semibold">ขอเบิก</th>
-                                    <th className="p-2 text-center text-sm font-semibold">อนุมัติ</th>
+                                    <th className="p-2 text-center text-sm font-semibold">สต็อกในคลัง</th>
+                                    <th className="p-2 text-center text-sm font-semibold">อนุมัติจ่าย</th>
                                     <th className="p-2 text-right text-sm font-semibold">ราคา/หน่วย</th>
                                     <th className="p-2 text-center text-sm font-semibold">สถานะ</th>
                                     <th className="p-2 text-right text-sm font-semibold">มูลค่าอนุมัติ (บาท)</th>
@@ -508,6 +882,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                                     const product = item.product || productMap.get(item.productId);
                                     if (!product) return null;
                                     const approvedQty = item.approvedQuantity || 0;
+                                    const stock = inventoryMap.get(item.productId) ?? 0;
                                     // If Backordered, show no value
                                     const rowValue = item.status === 'Backordered' ? 0 : approvedQty * (item.pricePerUnit || 0);
 
@@ -524,15 +899,47 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                                             <td className="p-2 text-center text-xs text-slate-500">
                                                 {item.lastApprovedQty || '-'}
                                             </td>
-                                            <td className="p-2 text-center text-xs text-slate-500">{item.quantity}</td>
-                                            <td className="p-2 w-24">
-                                                <input type="number" value={item.approvedQuantity === 0 ? '' : item.approvedQuantity} onChange={e => handleItemUpdate(item.id!, 'approvedQuantity', e.target.value)} min={0} className="w-full text-right p-1 border rounded text-sm dark:bg-slate-700 border-sky-400 focus:ring-2 focus:ring-sky-200" disabled={isPreview} placeholder="0"/>
+                                            <td className="p-2 text-center text-xs font-semibold text-slate-600 dark:text-slate-300">{item.quantity}</td>
+                                            <td className="p-2 text-center">
+                                                {stock === 0 ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-200 dark:border-red-800">
+                                                        หมด (0)
+                                                    </span>
+                                                ) : stock < item.quantity ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                                        ไม่พอ ({stock})
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                                        มี ({stock})
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-2 w-28">
+                                                <input 
+                                                    type="number" 
+                                                    value={item.approvedQuantity === 0 ? '' : item.approvedQuantity} 
+                                                    onChange={e => handleItemUpdate(item.id!, 'approvedQuantity', e.target.value)} 
+                                                    min={0} 
+                                                    className={`w-full text-right p-1 border rounded text-sm dark:bg-slate-700 focus:ring-2 ${
+                                                        (item.approvedQuantity || 0) > stock 
+                                                            ? 'border-red-500 bg-red-50/50 text-red-900 focus:ring-red-200 dark:bg-red-900/20 dark:text-red-200 font-bold' 
+                                                            : 'border-sky-400 focus:ring-sky-200'
+                                                    }`} 
+                                                    disabled={isPreview} 
+                                                    placeholder="0"
+                                                />
+                                                {(item.approvedQuantity || 0) > stock && (
+                                                    <div className="text-[10px] text-red-600 dark:text-red-400 font-bold text-right leading-tight mt-0.5">
+                                                        ⚠️ เกิน (+{((item.approvedQuantity || 0) - stock)})
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="p-2 w-28">
                                                 <input type="number" step="0.01" value={item.pricePerUnit ?? ''} onChange={e => handleItemUpdate(item.id!, 'pricePerUnit', e.target.value)} min={0} className="w-full text-right p-1 border rounded text-sm dark:bg-slate-700 bg-amber-50 dark:bg-amber-900/10" disabled={isPreview} />
                                             </td>
                                             <td className="p-2 w-32">
-                                                <select value={item.status} onChange={e => handleItemUpdate(item.id!, 'status', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-slate-700" disabled={isPreview}>
+                                                <select value={item.status} onChange={e => handleItemUpdate(item.id!, 'status', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-slate-700 font-medium" disabled={isPreview}>
                                                     <option value="Approved">อนุมัติ</option>
                                                     <option value="Rejected">ไม่อนุมัติ</option>
                                                     <option value="Backordered">ค้างจ่าย</option>
@@ -550,7 +957,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                                         </tr>
                                         {item.status === 'Rejected' && (
                                             <tr className="bg-red-50/50 dark:bg-red-900/10 border-b dark:border-slate-700">
-                                                <td colSpan={!isPreview ? 7 : 6} className="p-2 px-4">
+                                                <td colSpan={!isPreview ? 8 : 7} className="p-2 px-4">
                                                     <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                                                         <div className="flex-1 w-full">
                                                             <input 
@@ -582,7 +989,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                             </tbody>
                             <tfoot className="bg-slate-100 dark:bg-slate-800 font-bold border-t-2">
                                 <tr>
-                                    <td colSpan={5} className="p-3 text-right text-sm">
+                                    <td colSpan={6} className="p-3 text-right text-sm">
                                         รวมมูลค่าอนุมัติสุทธิ:
                                     </td>
                                     <td className="p-3 text-right text-sky-600 dark:text-sky-400 text-lg">

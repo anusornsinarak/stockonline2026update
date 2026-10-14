@@ -301,7 +301,7 @@ export const supabaseService = {
             id: r.id, requisitionNumber: r.requisition_number, departmentId: r.department_id, name: r.name,
             status: r.status as any, type: r.type as any, urgentReason: r.urgent_reason, createdAt: new Date(r.created_at),
             submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
-            approvedAt: (r as any).submitted_at ? new Date((r as any).submitted_at) : null,
+            approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
             requesterName: r.requester_name,
             requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position,
             receiverName: r.receiver_name,
@@ -322,7 +322,7 @@ export const supabaseService = {
             id: r.id, requisitionNumber: r.requisition_number, departmentId: r.department_id, name: r.name,
             status: r.status as any, type: r.type as any, urgentReason: r.urgent_reason, createdAt: new Date(r.created_at),
             submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
-            approvedAt: (r as any).submitted_at ? new Date((r as any).submitted_at) : null,
+            approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
             requesterName: r.requester_name,
             requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position, receiverName: r.receiver_name,
             rejectionReason: r.rejection_reason,
@@ -350,7 +350,9 @@ export const supabaseService = {
         return (data || []).map(r => ({
             id: r.id, requisitionNumber: r.requisition_number, departmentId: r.department_id, name: r.name,
             status: r.status as any, type: r.type as any, urgentReason: r.urgent_reason, createdAt: new Date(r.created_at),
-            submittedAt: r.submitted_at ? new Date(r.submitted_at) : null, requesterName: r.requester_name,
+            submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
+            approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
+            requesterName: r.requester_name,
             requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position,
             receiverName: r.receiver_name,
             items: (r as any).requisition_items.map((i: any) => ({
@@ -373,7 +375,9 @@ export const supabaseService = {
         return {
             id: data.id, requisitionNumber: data.requisition_number, departmentId: data.department_id, name: data.name,
             status: data.status as any, type: data.type as any, urgentReason: data.urgent_reason, createdAt: new Date(data.created_at),
-            submittedAt: data.submitted_at ? new Date(data.submitted_at) : null, requesterName: data.requester_name,
+            submittedAt: data.submitted_at ? new Date(data.submitted_at) : null,
+            approvedAt: (data as any).approved_at ? new Date((data as any).approved_at) : null,
+            requesterName: data.requester_name,
             requesterPosition: data.requester_position, approverName: data.approver_name, approverPosition: data.approver_position,
             receiverName: data.receiver_name,
             items: (data as any).requisition_items.map((i: any) => ({
@@ -552,6 +556,9 @@ export const supabaseService = {
 
     async updateRequisitionStatus(id: string, status: RequisitionStatus) {
         await supabase.rpc('update_requisition_status', { p_requisition_id: id, p_new_status: status });
+        if (['Completed', 'Ready', 'PartiallyApproved', 'Picking'].includes(status)) {
+            await supabase.from('requisitions').update({ approved_at: new Date().toISOString() }).eq('id', id);
+        }
         await this.notifyDepartmentStatusChange(id, status);
     },
 
@@ -559,6 +566,9 @@ export const supabaseService = {
         const updateData: any = { status: status as any };
         if (reason !== undefined) {
             updateData.rejection_reason = reason;
+        }
+        if (['Completed', 'Ready', 'PartiallyApproved', 'Picking'].includes(status)) {
+            updateData.approved_at = new Date().toISOString();
         }
         const { error } = await supabase
             .from('requisitions')
@@ -668,8 +678,11 @@ export const supabaseService = {
         const { error: rpcErr } = await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: 'Simple Approval' });
         if (rpcErr) throw rpcErr;
         
-        // Update requisition status and submitted_at (only if not already set)
-        const updateData: any = { status: status };
+        // Update requisition status, approved_at, and submitted_at (only if not already set)
+        const updateData: any = { 
+            status: status,
+            approved_at: new Date().toISOString()
+        };
         if (!originalReq?.submitted_at) {
             updateData.submitted_at = new Date().toISOString();
         }
@@ -689,7 +702,8 @@ export const supabaseService = {
             const { error: updErr } = await supabase.from('requisition_items').update({ 
                 quantity: originalQty,
                 status: item.status,
-                approved_quantity: item.approvedQuantity
+                approved_quantity: item.approvedQuantity,
+                reject_reason: item.rejectReason || null
             } as any)
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
@@ -702,6 +716,7 @@ export const supabaseService = {
             event: 'REQUISITION_APPROVED',
             message: `Requisition ${reqId} approved (Simple Approval).`
         });
+        this.checkAndNotifyLowStock().catch(e => console.error("Low stock check error:", e));
     },
 
     async updateProcessedRequisitionItems(reqId: string, items: RequisitionItem[], editReason: string | null) {
@@ -723,7 +738,9 @@ export const supabaseService = {
         const { error: rpcErr } = await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: editReason });
         if (rpcErr) throw rpcErr;
         
-        const updateData: any = {};
+        const updateData: any = {
+            approved_at: new Date().toISOString()
+        };
         // Set submitted_at to current date only if not already set
         if (!originalReq?.submitted_at) {
             updateData.submitted_at = new Date().toISOString();
@@ -733,9 +750,7 @@ export const supabaseService = {
             updateData.requisition_number = originalReq.requisition_number;
         }
         
-        if (Object.keys(updateData).length > 0) {
-            await supabase.from('requisitions').update(updateData).eq('id', reqId);
-        }
+        await supabase.from('requisitions').update(updateData).eq('id', reqId);
 
         // FIX: The RPC might overwrite the original requested quantity with the approved quantity,
         // or it might delete and recreate items (changing their IDs).
@@ -746,7 +761,8 @@ export const supabaseService = {
             const { error: updErr } = await supabase.from('requisition_items').update({ 
                 quantity: originalQty,
                 status: item.status,
-                approved_quantity: item.approvedQuantity
+                approved_quantity: item.approvedQuantity,
+                reject_reason: item.rejectReason || null
             } as any)
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
@@ -759,6 +775,7 @@ export const supabaseService = {
             event: 'REQUISITION_PROCESSED',
             message: `Requisition ${reqId} processed with reason: ${editReason || 'None'}.`
         });
+        this.checkAndNotifyLowStock().catch(e => console.error("Low stock check error:", e));
     },
 
     async handleRejectReasonsAndLocks(reqId: string, items: RequisitionItem[]) {
@@ -890,6 +907,9 @@ export const supabaseService = {
             event: 'STOCK_ADJUSTED',
             message: `Stock for product ${productId} adjusted by ${delta}. GRN: ${newGrn?.id || 'fallback'}`
         });
+        if (delta < 0) {
+            this.checkAndNotifyLowStock().catch(e => console.error("Low stock check error:", e));
+        }
     },
 
     async getProductTransactionHistory(productId: string, endDate: string): Promise<ProductTransaction[]> {
@@ -1684,6 +1704,119 @@ export const supabaseService = {
             }
         } catch (settingsError) {
             console.error("Failed to notify admins via external channels:", settingsError);
+        }
+    },
+
+    async getLowStockItems(): Promise<Array<{
+        product: Product;
+        currentStock: number;
+        minStock: number;
+        maxStock: number | null;
+        deficit: number;
+    }>> {
+        const { data: prods, error: prodErr } = await supabase
+            .from('products')
+            .select('*')
+            .not('min_stock', 'is', null)
+            .gt('min_stock', 0);
+
+        if (prodErr || !prods || prods.length === 0) {
+            return [];
+        }
+
+        const prodIds = prods.map((p: any) => p.id);
+        const { data: invData } = await supabase
+            .from('inventory')
+            .select('product_id, quantity')
+            .in('product_id', prodIds);
+
+        const invMap = new Map<string, number>();
+        (invData || []).forEach((i: any) => {
+            invMap.set(i.product_id, i.quantity || 0);
+        });
+
+        const lowStockItems: Array<{
+            product: Product;
+            currentStock: number;
+            minStock: number;
+            maxStock: number | null;
+            deficit: number;
+        }> = [];
+
+        for (const p of prods) {
+            const currentStock = invMap.get(p.id) ?? 0;
+            const minStock = Number(p.min_stock);
+            if (currentStock < minStock) {
+                lowStockItems.push({
+                    product: {
+                        id: p.id,
+                        name: p.name,
+                        unit: p.unit,
+                        category: p.category as any,
+                        pricePerUnit: p.price_per_unit,
+                        previousPricePerUnit: p.previous_price_per_unit,
+                        minStock: p.min_stock,
+                        maxStock: p.max_stock,
+                        lastYearUsage: p.last_year_usage,
+                        zone: p.zone,
+                        createdAt: p.created_at
+                    },
+                    currentStock,
+                    minStock,
+                    maxStock: p.max_stock,
+                    deficit: minStock - currentStock
+                });
+            }
+        }
+
+        return lowStockItems;
+    },
+
+    async checkAndNotifyLowStock(force: boolean = false): Promise<{
+        lowStockItems: Array<{
+            product: Product;
+            currentStock: number;
+            minStock: number;
+            maxStock: number | null;
+            deficit: number;
+        }>;
+        count: number;
+    }> {
+        try {
+            const lowStockItems = await this.getLowStockItems();
+            if (lowStockItems.length === 0) {
+                return { lowStockItems: [], count: 0 };
+            }
+
+            // Cooldown check (4 hours) unless force is requested
+            const cooldownTime = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+            const { data: recentNotifs } = await supabase
+                .from('notifications')
+                .select('id, created_at, message')
+                .ilike('message', '%ต่ำกว่าเกณฑ์ขั้นต่ำ%')
+                .gte('created_at', cooldownTime)
+                .limit(1);
+
+            const shouldNotify = force || !recentNotifs || recentNotifs.length === 0;
+
+            if (shouldNotify) {
+                let message = '';
+                if (lowStockItems.length === 1) {
+                    const item = lowStockItems[0];
+                    message = `⚠️ แจ้งเตือนเวชภัณฑ์ต่ำกว่าเกณฑ์ขั้นต่ำ (Min Stock): ${item.product.name} คงเหลือ ${item.currentStock.toLocaleString('th-TH')} ${item.product.unit} (เกณฑ์ขั้นต่ำ: ${item.minStock.toLocaleString('th-TH')})`;
+                } else {
+                    const sampleItems = lowStockItems.slice(0, 3).map(i => `${i.product.name} (${i.currentStock}/${i.minStock} ${i.product.unit})`).join(', ');
+                    const moreText = lowStockItems.length > 3 ? ` และอื่นๆ อีก ${lowStockItems.length - 3} รายการ` : '';
+                    message = `⚠️ แจ้งเตือน: พบเวชภัณฑ์ต่ำกว่าเกณฑ์ขั้นต่ำ (Min Stock) ${lowStockItems.length} รายการ เช่น ${sampleItems}${moreText} กรุณาตรวจสอบและดำเนินการเติมสต็อก`;
+                }
+
+                await this.notifyAdmins(message, 'low_stock', '⚠️');
+            }
+
+            return { lowStockItems, count: lowStockItems.length };
+        } catch (error) {
+            console.error('Failed to check and notify low stock:', error);
+            return { lowStockItems: [], count: 0 };
         }
     },
 

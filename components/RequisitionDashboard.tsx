@@ -317,7 +317,16 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
     const [allProducts, setAllProducts] = useState<Product[]>([]);
     const [requisitionToPrint, setRequisitionToPrint] = useState<Partial<Requisition> | null>(null);
     const [isPrintingReport, setIsPrintingReport] = useState<boolean>(false);
-    const [currentPage, setCurrentPage] = useState(1);
+    const [currentPage, setCurrentPage] = useState<number>(() => {
+        const saved = sessionStorage.getItem('dept_req_page');
+        const num = saved ? parseInt(saved, 10) : 1;
+        return isNaN(num) || num < 1 ? 1 : num;
+    });
+
+    useEffect(() => {
+        sessionStorage.setItem('dept_req_page', String(currentPage));
+    }, [currentPage]);
+
     const [expandedReqs, setExpandedReqs] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -412,8 +421,10 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
         return { countThisMonth: filteredRequisitions.length, valueThisMonth: totalValueThisMonth, pendingValue: 0, valueThisFiscalYear: totalValueThisMonth };
     }, [filteredRequisitions, productMap]);
 
-    const fetchData = useCallback(async () => {
-        setIsLoading(true);
+    const fetchData = useCallback(async (isBackground = false) => {
+        if (!isBackground && requisitions.length === 0) {
+            setIsLoading(true);
+        }
         try {
             const [reqs, aProducts] = await Promise.all([
                 supabaseService.getRequisitionsForDepartment(department.id),
@@ -422,7 +433,7 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
             setRequisitions(reqs);
             setAllProducts(aProducts);
         } catch (err) { setError("ไม่สามารถโหลดข้อมูลได้"); } finally { setIsLoading(false); }
-    }, [department.id]);
+    }, [department.id, requisitions.length]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -549,32 +560,30 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
         return productUsageSummary.reduce((sum, item) => sum + item.value, 0);
     }, [productUsageSummary]);
 
-    if (isLoading) return <LoadingScreen message="กำลังโหลดข้อมูล..." />;
-
-    if (isCreating && extraData) {
-        return (
-            <AutomatedRequisitionForm
-                department={department}
-                isRequisitionOpen={isRequisitionOpen}
-                onCancel={() => { setIsCreating(false); setEditingReq(null); }}
-                onSaveSuccess={() => { setIsCreating(false); setEditingReq(null); fetchData(); }}
-                allProducts={allProducts}
-                initialDeptProducts={extraData.deptProducts}
-                initialSurveyQuantities={extraData.surveyData?.quantities || {}}
-                expiringStock={extraData.expiringStock}
-                inventoryMap={new Map(extraData.inventory.map(i => [i.productId, i.quantity]))}
-                pendingRequisitions={requisitions.filter(r => ['Submitted', 'PartiallyApproved', 'Picking'].includes(r.status))}
-                personnel={personnel}
-                requisitionHistory={requisitions}
-                requisitionType={(extraData.activeAnnouncement?.isOffCycleWeek && department.type !== 'External') ? "OffCycle" : "Normal"}
-                deptInventory={extraData.deptInventory}
-                initialRequisition={editingReq}
-            />
-        );
-    }
+    if (isLoading && requisitions.length === 0) return <LoadingScreen message="กำลังโหลดข้อมูล..." />;
 
     return (
-        <div className="max-w-5xl mx-auto bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-lg">
+        <>
+            {isCreating && extraData && (
+                <AutomatedRequisitionForm
+                    department={department}
+                    isRequisitionOpen={isRequisitionOpen}
+                    onCancel={() => { setIsCreating(false); setEditingReq(null); }}
+                    onSaveSuccess={() => { setIsCreating(false); setEditingReq(null); fetchData(true); }}
+                    allProducts={allProducts}
+                    initialDeptProducts={extraData.deptProducts}
+                    initialSurveyQuantities={extraData.surveyData?.quantities || {}}
+                    expiringStock={extraData.expiringStock}
+                    inventoryMap={new Map(extraData.inventory.map(i => [i.productId, i.quantity]))}
+                    pendingRequisitions={requisitions.filter(r => ['Submitted', 'PartiallyApproved', 'Picking'].includes(r.status))}
+                    personnel={personnel}
+                    requisitionHistory={requisitions}
+                    requisitionType={(extraData.activeAnnouncement?.isOffCycleWeek && department.type !== 'External') ? "OffCycle" : "Normal"}
+                    deptInventory={extraData.deptInventory}
+                    initialRequisition={editingReq}
+                />
+            )}
+            <div className={isCreating ? 'hidden' : 'max-w-5xl mx-auto bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-lg'}>
             {isLoadingForm && <LoadingScreen message="กำลังเตรียมแบบฟอร์ม..." />}
             {requisitionToPrint && <RequisitionPrintView requisition={requisitionToPrint} productMap={productMap} departmentName={department.name} documentSettings={documentSettings} personnel={personnel}/>}
             {isPrintingReport && (
@@ -1047,6 +1056,7 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
                 </div>
             </div>
         </div>
+        </>
     );
 };
 

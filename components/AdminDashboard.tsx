@@ -69,6 +69,7 @@ import DocumentPlusIcon from './icons/DocumentPlusIcon';
 
 import { LoanSystemView } from './admin/LoanSystemView';
 import { LoanQRCodeView } from './admin/LoanQRCodeView';
+import { LowStockAlertBanner, LowStockItem } from './admin/LowStockAlertBanner';
 
 type Tab = 'summary' | 'inventorySummary' | 'departments' | 'purchasePlan' | 'requisitions' | 'purchaseOrder' | 'receipts' | 'stockCard' | 'expiringStock' | 'reports' | 'manageItems' | 'manageStockLevels' | 'manageDepts' | 'manageUsers' | 'managePersonnel' | 'notifications' | 'system' | 'logs' | 'documentSettings' | 'accountSettings' | 'manageAnnouncements' | 'loanSystem' | 'loanQRCode' | 'manageSurvey';
 
@@ -91,7 +92,13 @@ interface AdminDashboardProps {
 const navGroups: Record<string, { icon: React.ReactNode; items: Partial<Record<Tab, string | ((data: any) => string)>> }> = {
   'ภาพรวมและการวางแผน': {
     icon: <ChartBarIcon className="w-5 h-5"/>,
-    items: { summary: 'สรุปผลรวม', inventorySummary: 'สรุปคงคลัง', departments: 'ผลรายหน่วยงาน', purchasePlan: (d) => `วางแผนจัดซื้อ (${d.products?.length || 0})`, reports: 'รายงาน' },
+    items: { 
+      summary: 'สรุปผลรวม', 
+      inventorySummary: (d) => `สรุปคงคลัง${d?.lowStockCount ? ` ⚠️ (${d.lowStockCount})` : ''}`, 
+      departments: 'ผลรายหน่วยงาน', 
+      purchasePlan: (d) => `วางแผนจัดซื้อ (${d.products?.length || 0})`, 
+      reports: 'รายงาน' 
+    },
   },
   'ปฏิบัติการคลัง': {
     icon: <CubeIcon className="w-5 h-5"/>,
@@ -99,7 +106,13 @@ const navGroups: Record<string, { icon: React.ReactNode; items: Partial<Record<T
   },
   'การจัดการ': {
     icon: <UsersIcon className="w-5 h-5"/>,
-    items: { manageItems: (d) => `จัดการรายการและบริษัท (${d.products?.length || 0})`, manageStockLevels: 'จัดการ Min/Max Stock', manageDepts: 'จัดการหน่วยงาน', manageUsers: 'จัดการผู้ใช้', managePersonnel: 'จัดการบุคลากร' },
+    items: { 
+      manageItems: (d) => `จัดการรายการและบริษัท (${d.products?.length || 0})`, 
+      manageStockLevels: (d) => `จัดการ Min/Max${d?.lowStockCount ? ` ⚠️ (${d.lowStockCount})` : ''}`, 
+      manageDepts: 'จัดการหน่วยงาน', 
+      manageUsers: 'จัดการผู้ใช้', 
+      managePersonnel: 'จัดการบุคลากร' 
+    },
   },
   'ระบบและการตั้งค่า': {
     icon: <CogIcon className="w-5 h-5"/>,
@@ -207,6 +220,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
           users: extraData[9],
           productSuppliers: extraData[10]
       }));
+      supabaseService.checkAndNotifyLowStock().catch(e => console.error(e));
       await fetchBudget();
     } catch (e) { 
         console.error(e); 
@@ -339,6 +353,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     return loans;
   }, [data.requisitions, data.departments, data.loans]);
 
+  const lowStockItems = useMemo<LowStockItem[]>(() => {
+    if (!data.products || !data.inventory) return [];
+    const invMap = new Map((data.inventory || []).map((i: any) => [i.productId, i.quantity]));
+    return (data.products || []).filter((p: any) => {
+      if (p.minStock === null || p.minStock === undefined || p.minStock <= 0) return false;
+      const currentStock = invMap.get(p.id) ?? 0;
+      return currentStock < p.minStock;
+    }).map((p: any) => ({
+      product: p,
+      currentStock: invMap.get(p.id) ?? 0,
+      minStock: Number(p.minStock),
+      maxStock: p.maxStock !== null && p.maxStock !== undefined ? Number(p.maxStock) : null,
+      deficit: Number(p.minStock) - Number(invMap.get(p.id) || 0)
+    }));
+  }, [data.products, data.inventory]);
+
   const handleViewPicking = (req: Requisition, preview: boolean) => {
     const deptName = data.departments.find((d: any) => d.id === req.departmentId)?.name;
     setRequisitionForPicking({ ...req, departmentName: deptName });
@@ -361,8 +391,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
               // we can just switch tab.
               setActiveTab('stockCard');
           }} />;
-          case 'departments': return <DepartmentView results={data.surveySubmissions} products={data.products} departments={data.departments} requisitions={data.requisitions} onDataChange={() => fetchData(true)} isReadOnly={isReadOnly} fiscalYear={viewFiscalYear} documentSettings={documentSettings} />;
-          case 'purchasePlan': return <PurchasePlanView products={data.products} fiscalYear={viewFiscalYear} currentFiscalYearBE={currentFiscalYearBE} budget={budget} aggregatedSurveyData={aggregatedSurveyData} initialPlan={data.purchasePlan} onPlanSave={() => fetchData(true)} inventory={data.inventory} documentSettings={documentSettings} productUsageHistory={data.productUsageHistory} isReadOnly={isReadOnly} />;
+          case 'purchasePlan': return <PurchasePlanView products={data.products} fiscalYear={viewFiscalYear} currentFiscalYearBE={currentFiscalYearBE} budget={budget} aggregatedSurveyData={aggregatedSurveyData} initialPlan={data.purchasePlan} onPlanSave={() => fetchData(true)} inventory={data.inventory} documentSettings={documentSettings} productUsageHistory={data.productUsageHistory} isReadOnly={false} />;
           case 'reports': return <ReportsView requisitions={data.requisitions} products={data.products} departments={data.departments} inventory={data.inventory} goodsReceivedNotes={data.goodsReceivedNotes} purchasePlan={data.purchasePlan} surveyResults={data.surveySubmissions} productUsageHistory={data.productUsageHistory} documentSettings={documentSettings} />;
           case 'requisitions': return <ManageRequisitionsView user={user} requisitions={data.requisitions} departments={data.departments} allProducts={data.products} inventory={data.inventory} backorders={derivedBackorders} onDataChange={() => fetchData(true)} documentSettings={documentSettings} onViewPickingList={handleViewPicking} onOpenReturnModal={setReturnModalReq} onOpenCreateForDeptModal={handleOpenCreateForDept} />;
           case 'loanSystem': return <LoanSystemView departments={data.departments} allProducts={data.products} currentUser={user} />;
@@ -389,13 +418,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
   if (isLoading && data.products.length === 0) return <LoadingScreen message="กำลังโหลดข้อมูลพื้นฐาน..." />;
 
-  if (requisitionForPicking) {
-      return (
+  return (
+    <>
+      {requisitionForPicking && (
           <PickingView 
             requisition={requisitionForPicking} 
             allProducts={data.products} 
             inventoryMap={new Map(data.inventory.map((i: any) => [i.productId, i.quantity]))} 
             onClose={() => { setRequisitionForPicking(null); fetchData(true); }}
+            onNavigateToReceipts={() => { setRequisitionForPicking(null); setActiveTab('receipts'); }}
             isPreview={isPickingPreview}
             onItemsUpdated={() => fetchData(true)}
             onProcessSimple={async (items) => { await supabaseService.saveSimpleApproval(requisitionForPicking.id, items, 'Picking'); }}
@@ -403,11 +434,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             documentSettings={documentSettings}
             personnel={data.personnel}
           />
-      );
-  }
-
-  return (
-    <div className="flex flex-col md:flex-row gap-6">
+      )}
+      <div className={requisitionForPicking ? 'hidden' : 'flex flex-col md:flex-row gap-6'}>
         {/* Mobile Menu Toggle */}
         <div className="md:hidden flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg no-print">
             <div className="flex items-center gap-3">
@@ -437,7 +465,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                     {openNavGroup === groupName && (
                         <div className="mt-2 space-y-1 pl-4 animate-fade-in">
                             {Object.entries(group.items).map(([tabKey, tabValue]) => {
-                                const tabName = typeof tabValue === 'function' ? tabValue(data) : tabValue;
+                                const tabName = typeof tabValue === 'function' ? tabValue({ ...data, lowStockCount: lowStockItems.length }) : tabValue;
                                 return (
                                 <button 
                                     key={tabKey} 
@@ -462,7 +490,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                 <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
                     {(() => {
                         const tabValue = Object.values(navGroups).flatMap(g => Object.entries(g.items)).find(([k]) => k === activeTab)?.[1];
-                        return typeof tabValue === 'function' ? tabValue(data) : (tabValue || 'Dashboard');
+                        return typeof tabValue === 'function' ? tabValue({ ...data, lowStockCount: lowStockItems.length }) : (tabValue || 'Dashboard');
                     })()}
                 </h1>
                 
@@ -483,6 +511,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                     </select>
                 </div>
             </div>
+
+            <LowStockAlertBanner
+                lowStockItems={lowStockItems}
+                role="Admin"
+                onNavigateToStockLevels={() => setActiveTab('manageStockLevels')}
+                onNavigateToStockCard={() => setActiveTab('stockCard')}
+                onNavigateToPurchaseOrder={() => setActiveTab('purchaseOrder')}
+                onRecheck={() => fetchData(true)}
+            />
 
             {renderContent()}
         </main>
@@ -559,5 +596,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             />
         )}
     </div>
+    </>
   );
 };
