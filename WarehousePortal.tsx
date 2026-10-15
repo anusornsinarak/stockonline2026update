@@ -196,7 +196,6 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
                 documentReceiverName: settings.document_receiver_name,
                 documentReceiverPosition: settings.document_receiver_position
             });
-            supabaseService.checkAndNotifyLowStock().catch(e => console.error(e));
         } catch (err) {
             console.error(err);
             setError("ไม่สามารถโหลดข้อมูลได้");

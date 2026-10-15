@@ -220,7 +220,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
           users: extraData[9],
           productSuppliers: extraData[10]
       }));
-      supabaseService.checkAndNotifyLowStock().catch(e => console.error(e));
       await fetchBudget();
     } catch (e) { 
         console.error(e); 

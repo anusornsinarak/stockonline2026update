@@ -1788,8 +1788,8 @@ export const supabaseService = {
                 return { lowStockItems: [], count: 0 };
             }
 
-            // Cooldown check (4 hours) unless force is requested
-            const cooldownTime = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+            // Cooldown check (24 hours) unless force is requested
+            const cooldownTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
             const { data: recentNotifs } = await supabase
                 .from('notifications')
                 .select('id, created_at, message')

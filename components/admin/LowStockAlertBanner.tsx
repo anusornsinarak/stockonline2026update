@@ -8,6 +8,7 @@ import DownloadIcon from '../icons/DownloadIcon';
 import ShoppingCartIcon from '../icons/ShoppingCartIcon';
 import ClockIcon from '../icons/ClockIcon';
 import MagnifyingGlassIcon from '../icons/MagnifyingGlassIcon';
+import CheckCircleIcon from '../icons/CheckCircleIcon';
 import Modal from '../Modal';
 import * as XLSX from 'xlsx';
 import { supabaseService } from '../../services/supabaseService';
@@ -19,6 +20,10 @@ export interface LowStockItem {
     maxStock: number | null;
     deficit: number;
 }
+
+const STORAGE_ACK_TIME = 'low_stock_acknowledged_time';
+const STORAGE_ACK_ITEMS = 'low_stock_acknowledged_items';
+const STORAGE_ACK_MODE = 'low_stock_acknowledged_mode'; // '24h' | 'until_change'
 
 interface LowStockAlertBannerProps {
     lowStockItems: LowStockItem[];
@@ -45,6 +50,68 @@ export const LowStockAlertBanner: React.FC<LowStockAlertBannerProps> = ({
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [isNotifying, setIsNotifying] = useState(false);
     const [notifySuccessMsg, setNotifySuccessMsg] = useState<string | null>(null);
+
+    // Persistent acknowledgement state
+    const [acknowledgedState, setAcknowledgedState] = useState<{
+        isAck: boolean;
+        mode: '24h' | 'until_change';
+        newItemsCount: number;
+    }>(() => {
+        try {
+            const savedTime = localStorage.getItem(STORAGE_ACK_TIME);
+            const savedItems = localStorage.getItem(STORAGE_ACK_ITEMS);
+            const savedMode = (localStorage.getItem(STORAGE_ACK_MODE) as '24h' | 'until_change') || '24h';
+            if (!savedTime) return { isAck: false, mode: '24h', newItemsCount: 0 };
+
+            const ackTime = parseInt(savedTime, 10);
+            const now = Date.now();
+            const is24hValid = (now - ackTime) < 24 * 60 * 60 * 1000;
+
+            if (savedMode === '24h' && !is24hValid) {
+                return { isAck: false, mode: '24h', newItemsCount: 0 };
+            }
+
+            const ackItemIds = new Set(savedItems ? JSON.parse(savedItems) : []);
+            const currentItemIds = lowStockItems.map(i => i.product.id);
+            const newItems = currentItemIds.filter(id => !ackItemIds.has(id));
+
+            if (savedMode === 'until_change' && newItems.length > 0) {
+                return { isAck: false, mode: 'until_change', newItemsCount: newItems.length };
+            }
+
+            return {
+                isAck: savedMode === 'until_change' ? newItems.length === 0 : is24hValid,
+                mode: savedMode,
+                newItemsCount: newItems.length
+            };
+        } catch {
+            return { isAck: false, mode: '24h', newItemsCount: 0 };
+        }
+    });
+
+    const handleAcknowledge = (mode: '24h' | 'until_change' = '24h') => {
+        try {
+            localStorage.setItem(STORAGE_ACK_TIME, String(Date.now()));
+            localStorage.setItem(STORAGE_ACK_MODE, mode);
+            localStorage.setItem(STORAGE_ACK_ITEMS, JSON.stringify(lowStockItems.map(i => i.product.id)));
+            setAcknowledgedState({ isAck: true, mode, newItemsCount: 0 });
+            setIsDismissed(false);
+        } catch (e) {
+            console.error('Failed to save low stock acknowledgement:', e);
+        }
+    };
+
+    const handleResetAcknowledge = () => {
+        try {
+            localStorage.removeItem(STORAGE_ACK_TIME);
+            localStorage.removeItem(STORAGE_ACK_ITEMS);
+            localStorage.removeItem(STORAGE_ACK_MODE);
+            setAcknowledgedState({ isAck: false, mode: '24h', newItemsCount: 0 });
+            setIsDismissed(false);
+        } catch (e) {
+            console.error('Failed to reset low stock acknowledgement:', e);
+        }
+    };
 
     const totalDeficit = useMemo(() => {
         return lowStockItems.reduce((sum, item) => sum + item.deficit, 0);
@@ -102,6 +169,39 @@ export const LowStockAlertBanner: React.FC<LowStockAlertBannerProps> = ({
 
     if (lowStockItems.length === 0) {
         return null;
+    }
+
+    if (acknowledgedState.isAck) {
+        return (
+            <div className={`mb-4 flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs text-emerald-900 dark:text-emerald-200 shadow-sm gap-2 ${className}`}>
+                <div className="flex items-center gap-2">
+                    <CheckCircleIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <div>
+                        <span className="font-bold">
+                            รับทราบรายการสต็อกต่ำแล้ว ({lowStockItems.length} รายการ)
+                        </span>
+                        <span className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 ml-2 hidden sm:inline">
+                            {acknowledgedState.mode === '24h' ? '• ปิดการเตือนชั่วคราววันนี้ (24 ชม.)' : '• ซ่อนการเตือนจนกว่าสต็อกจะเปลี่ยนแปลง'}
+                        </span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                    <button
+                        onClick={() => setIsDetailModalOpen(true)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition-colors shadow-xs"
+                    >
+                        ดูรายการ ({lowStockItems.length})
+                    </button>
+                    <button
+                        onClick={handleResetAcknowledge}
+                        className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-emerald-100/50 dark:hover:bg-slate-700 rounded-lg transition-colors text-xs"
+                        title="เปิดแสดงแถบเตือนสีส้มเต็มรูปแบบอีกครั้ง"
+                    >
+                        เปิดการแจ้งเตือนอีกครั้ง
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     if (isDismissed) {
@@ -185,11 +285,21 @@ export const LowStockAlertBanner: React.FC<LowStockAlertBannerProps> = ({
                     </div>
 
                     {/* Right Action Buttons */}
-                    <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
+                    <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0 flex-wrap justify-end">
+                        <button
+                            type="button"
+                            onClick={() => handleAcknowledge('24h')}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all active:scale-95"
+                            title="รับทราบแล้วและไม่ต้องแจ้งเตือนซ้ำอีกวันนี้"
+                        >
+                            <CheckCircleIcon className="w-4 h-4" />
+                            <span>รับทราบแล้ว</span>
+                        </button>
+
                         <button
                             type="button"
                             onClick={() => setIsDetailModalOpen(true)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all active:scale-95"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all active:scale-95"
                         >
                             <EyeIcon className="w-4 h-4" />
                             <span>ดูรายการ ({lowStockItems.length})</span>
@@ -400,11 +510,42 @@ export const LowStockAlertBanner: React.FC<LowStockAlertBannerProps> = ({
                     </div>
 
                     {/* Bottom Actions */}
-                    <div className="flex items-center justify-between pt-2">
-                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                            * ระบบตรวจสอบและแจ้งเตือนอัตโนมัติเมื่อคงเหลือในสต็อกมีจำนวนน้อยกว่าเกณฑ์ขั้นต่ำ (Min Stock)
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handleAcknowledge('24h');
+                                    setIsDetailModalOpen(false);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors shadow-sm"
+                                title="รับทราบแล้วและไม่ต้องแจ้งเตือนซ้ำอีกวันนี้"
+                            >
+                                <CheckCircleIcon className="w-4 h-4" />
+                                <span>รับทราบแล้ว (ไม่ต้องเตือนอีกวันนี้)</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handleAcknowledge('until_change');
+                                    setIsDetailModalOpen(false);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 rounded-xl transition-colors"
+                                title="รับทราบแล้วและซ่อนไว้จนกว่าจะมีรายการอื่นต่ำกว่าเกณฑ์"
+                            >
+                                <span>ซ่อนจนกว่าสต็อกจะเปลี่ยน</span>
+                            </button>
+                            {acknowledgedState.isAck && (
+                                <button
+                                    type="button"
+                                    onClick={handleResetAcknowledge}
+                                    className="px-2.5 py-2 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                                >
+                                    เปิดเตือนซ้ำ
+                                </button>
+                            )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
                             {role === 'Admin' && onNavigateToStockLevels && (
                                 <button
                                     type="button"
@@ -412,7 +553,7 @@ export const LowStockAlertBanner: React.FC<LowStockAlertBannerProps> = ({
                                         setIsDetailModalOpen(false);
                                         onNavigateToStockLevels();
                                     }}
-                                    className="px-4 py-2 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl transition-colors"
+                                    className="px-3.5 py-2 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl transition-colors"
                                 >
                                     ไปที่จัดการระดับสต็อก (Min/Max)
                                 </button>

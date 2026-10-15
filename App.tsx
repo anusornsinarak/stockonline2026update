@@ -167,18 +167,12 @@ const App: React.FC = () => {
   useEffect(() => {
       if (user?.id) {
           fetchNotifications(true);
-          if (user.role === 'Admin' || user.role === 'Warehouse') {
-              supabaseService.checkAndNotifyLowStock().catch(() => {});
-          }
           const interval = setInterval(() => {
               fetchNotifications();
-              if (user.role === 'Admin' || user.role === 'Warehouse') {
-                  supabaseService.checkAndNotifyLowStock().catch(() => {});
-              }
           }, 60000);
           return () => clearInterval(interval);
       }
-  }, [user?.id, user?.role, fetchNotifications]);
+  }, [user?.id, fetchNotifications]);
 
   useEffect(() => {
       if (!user?.id) {
