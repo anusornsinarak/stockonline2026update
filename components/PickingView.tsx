@@ -44,6 +44,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
     
     // Stock shortfall handling states
     const [showStockShortfallModal, setShowStockShortfallModal] = useState(false);
+    const [showConfirmShortfallModal, setShowConfirmShortfallModal] = useState(false);
     const [shortfallItems, setShortfallItems] = useState<{
         item: RequisitionItem;
         stock: number;
@@ -239,9 +240,12 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                 // Only auto-reject if status is 'Approved' but quantity is 0
                 // If user explicitly chose 'Backordered' or 'Loaned', respect that choice
                 const isAutoReject = i.approvedQuantity === 0 && (i.status === 'Approved' || i.status === 'Pending');
+                const finalStatus = (i.approvedQuantity || 0) > 0 && i.status === 'Pending'
+                    ? 'Approved'
+                    : (isAutoReject ? 'Rejected' : i.status);
                 return {
                     ...i,
-                    status: isAutoReject ? 'Rejected' : i.status
+                    status: finalStatus
                 };
             });
 
@@ -417,11 +421,39 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                 initialOverrides[s.item.id] = selectedGlobalAction;
             });
             setItemActionOverrides(initialOverrides);
-            setShowStockShortfallModal(true);
+            // Open the confirm shortfall modal to ask for confirmation (ถามซ้ำ)
+            setShowConfirmShortfallModal(true);
             return;
         }
         
         // 2. Check for partial approvals that need confirmation
+        const partials = items.filter(item => 
+            item.approvedQuantity > 0 && 
+            item.approvedQuantity < item.quantity && 
+            item.status !== 'Backordered' && 
+            item.status !== 'Rejected' &&
+            item.status !== 'Loaned'
+        );
+
+        if (partials.length > 0) {
+            setPartialItems(partials);
+            const initialActions: Record<number, 'create' | 'cancel'> = {};
+            partials.forEach(item => {
+                initialActions[item.id] = 'create';
+            });
+            setBackorderActions(initialActions);
+            setShowBackorderModal(true);
+            return;
+        }
+
+        await processItems(items);
+    };
+
+    const handleFinalizeShortfallApproval = async () => {
+        setShowConfirmShortfallModal(false);
+        setShowStockShortfallModal(false);
+
+        // Check for partial approvals that need confirmation
         const partials = items.filter(item => 
             item.approvedQuantity > 0 && 
             item.approvedQuantity < item.quantity && 
@@ -672,7 +704,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                             </table>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-2 border-t dark:border-slate-700">
+                        <div className="flex flex-wrap justify-between items-center gap-3 pt-3 border-t dark:border-slate-700">
                             <button
                                 type="button"
                                 onClick={() => setShowStockShortfallModal(false)}
@@ -680,13 +712,159 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                             >
                                 กลับไปแก้ไขเอง
                             </button>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleApplyAdjustedStock}
+                                    className="px-4 py-2 text-xs font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition-all"
+                                >
+                                    ปรับจ่ายเท่าที่มี
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowStockShortfallModal(false);
+                                        setShowConfirmShortfallModal(true);
+                                    }}
+                                    className="px-5 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+                                >
+                                    <CheckCircleIcon className="w-4 h-4" />
+                                    <span>ยืนยันอนุมัติจ่ายตามนี้ (แม้ของไม่พอ)</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Option 3: ยืนยันอนุมัติจ่ายตามจำนวนนี้ (แม้ของไม่พอจ่าย) */}
+                    <div className="p-4 bg-amber-50/80 dark:bg-amber-950/30 rounded-xl border-2 border-amber-400 dark:border-amber-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2.5 bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg flex-shrink-0">
+                                <CheckCircleIcon className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                                        ทางเลือกที่ 3: ยืนยันอนุมัติจ่ายตามจำนวนนี้ (แม้ของไม่พอจ่าย)
+                                    </h4>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200">
+                                        ถามยืนยันซ้ำ
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                                    อนุมัติจ่ายตามยอดที่ระบุทันที (สำหรับกรณีของจริงมาถึงแล้ว หรือต้องการอนุมัติไปก่อน) ระบบจะถามยืนยันซ้ำอีกครั้งก่อนบันทึก
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowStockShortfallModal(false);
+                                setShowConfirmShortfallModal(true);
+                            }}
+                            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-sm whitespace-nowrap flex items-center gap-1.5 transition-all flex-shrink-0"
+                        >
+                            <CheckCircleIcon className="w-4 h-4" />
+                            <span>อนุมัติตามยอดนี้ (ถามยืนยันซ้ำ)</span>
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Modal: ถามซ้ำเพื่อยืนยันการอนุมัติเมื่อของไม่พอจ่าย */}
+            <Modal
+                isOpen={showConfirmShortfallModal}
+                onClose={() => setShowConfirmShortfallModal(false)}
+                title="⚠️ ยืนยันการอนุมัติ: พบเวชภัณฑ์ในสต็อกไม่พอจ่าย"
+                size="lg"
+            >
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/30 rounded-xl border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100">
+                        <ExclamationTriangleIcon className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                            <p className="font-bold text-sm">
+                                ยืนยันอนุมัติจ่าย แม้จะมีเวชภัณฑ์ไม่พอจ่าย {shortfallItems.length} รายการ?
+                            </p>
+                            <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                                ระบบตรวจพบว่ายอดที่ท่านต้องการอนุมัติจ่าย มีจำนวนมากกว่าสต็อกคงเหลือในคลังกลาง หรือสต็อกในคลังเป็น 0
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 flex justify-between items-center">
+                            <span>รายการเวชภัณฑ์ที่ไม่พอจ่าย</span>
+                            <span className="text-red-600 dark:text-red-400 font-bold">{shortfallItems.length} รายการ</span>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto divide-y dark:divide-slate-700 text-xs bg-white dark:bg-slate-800">
+                            {shortfallItems.map(({ item, stock, shortfall }) => {
+                                const product = item.product || productMap.get(item.productId);
+                                return (
+                                    <div key={item.id} className="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">{product?.name || item.productId}</div>
+                                            <div className="text-[10px] text-slate-500">
+                                                หน่วย: {product?.unit || '-'} | ขอเบิก: {item.quantity}
+                                            </div>
+                                        </div>
+                                        <div className="text-right flex items-center gap-2 flex-shrink-0">
+                                            <div className="text-center px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700">
+                                                <div className="text-[10px] text-slate-400">ในคลัง</div>
+                                                <div className="font-bold text-slate-700 dark:text-slate-200">{stock}</div>
+                                            </div>
+                                            <div className="text-center px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800">
+                                                <div className="text-[10px] text-emerald-600 dark:text-emerald-400">จะอนุมัติ</div>
+                                                <div className="font-black text-emerald-700 dark:text-emerald-300">{item.approvedQuantity || 0}</div>
+                                            </div>
+                                            <div className="text-center px-2 py-0.5 rounded bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800">
+                                                <div className="text-[10px] text-red-500">ขาด</div>
+                                                <div className="font-bold text-red-600 dark:text-red-400">-{shortfall}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="p-3 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 rounded-xl text-xs text-sky-800 dark:text-sky-200 space-y-1">
+                        <div className="font-bold flex items-center gap-1.5">
+                            <span>ℹ️ ข้อมูลการทำงานของระบบ:</span>
+                        </div>
+                        <p>
+                            • เมื่อยืนยัน ระบบจะบันทึกยอดอนุมัติให้ตามที่ระบุไว้ทันที (สถานะ: อนุมัติแล้ว/พร้อมจ่าย)
+                        </p>
+                        <p>
+                            • เหมาะสำหรับกรณีที่สินค้าจริงมีส่งมาถึงแล้วแต่ยังไม่ได้ลงรับในระบบ หรือได้รับอนุมัติกรณีพิเศษ
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-3 border-t dark:border-slate-700">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowConfirmShortfallModal(false);
+                                setShowStockShortfallModal(true);
+                            }}
+                            className="text-xs text-slate-600 dark:text-slate-300 hover:text-sky-600 underline font-medium"
+                        >
+                            ← ดูตัวเลือกปรับจ่ายเท่าที่มี (ค้างจ่าย/ยืม/ยกเลิก)
+                        </button>
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                             <button
                                 type="button"
-                                onClick={handleApplyAdjustedStock}
-                                className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+                                onClick={() => setShowConfirmShortfallModal(false)}
+                                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                            >
+                                กลับไปแก้ไขตัวเลข
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleFinalizeShortfallApproval}
+                                disabled={isProcessing}
+                                className="px-5 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-lg shadow-md flex items-center gap-1.5 transition-all"
                             >
                                 <CheckCircleIcon className="w-4 h-4" />
-                                <span>ปรับจ่ายเท่าที่มีตามตัวเลือกนี้</span>
+                                <span>{isProcessing ? 'กำลังบันทึก...' : 'ขอยืนยันอนุมัติตามยอดนี้'}</span>
                             </button>
                         </div>
                     </div>
