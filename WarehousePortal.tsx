@@ -290,26 +290,14 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
         if (!requisitionForPickingView) return;
         setIsProcessing(requisitionForPickingView.id);
         try {
-            const hasLoansOrBackorders = items.some(i => i.status === 'Loaned' || i.status === 'Backordered');
-            const hasApprovedItems = items.some(i => (i.approvedQuantity || 0) > 0 && ['Approved', 'Fulfilled', 'Pending'].includes(i.status));
             const allAreRejected = items.every(i => i.status === 'Rejected');
-            
-            let finalStatus: RequisitionStatus;
-            
-            if (allAreRejected) {
-                finalStatus = 'Rejected';
-            } else if (hasLoansOrBackorders || (hasApprovedItems && items.some(i => i.status === 'Rejected'))) {
-                finalStatus = 'PartiallyApproved';
-            } else {
-                // บังคับสถานะเป็น Ready (อนุมัติแล้ว/พร้อมจ่าย) เสมอเพื่อให้ผู้เบิกมองเห็นยอดอนุมัติได้ทันที
-                finalStatus = 'Ready';
-            }
+            // หลังจากยืนยันอนุมัติ สถานะจะเปลี่ยนเป็นกำลังจัดของ (Picking) อัตโนมัติ (หรือ Rejected หากไม่อนุมัติทุกรายการ)
+            const finalStatus: RequisitionStatus = allAreRejected ? 'Rejected' : 'Picking';
 
             await supabaseService.saveSimpleApproval(requisitionForPickingView.id, items, finalStatus);
-            alert('บันทึกการอนุมัติสำเร็จ! (สถานะ: อนุมัติแล้ว/พร้อมจ่าย)');
-            handleClosePickingView();
         } catch (error: any) {
-            alert(`เกิดข้อผิดพลาด: ${error.message}`);
+            alert(`เกิดข้อผิดพลาดในการบันทึก: ${error.message}`);
+            throw error;
         } finally {
             setIsProcessing(null);
         }

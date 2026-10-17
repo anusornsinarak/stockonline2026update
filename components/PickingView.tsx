@@ -257,7 +257,9 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                 ...item,
                 product: item.product || productMap.get(item.productId)
             }));
-            setRequisitionToPrint({ ...requisition, items: itemsWithProduct });
+            const allAreRejected = finalItems.every(i => i.status === 'Rejected');
+            const targetStatus = allAreRejected ? 'Rejected' : 'Picking';
+            setRequisitionToPrint({ ...requisition, status: targetStatus, items: itemsWithProduct });
         } catch(e) {
             alert("เกิดข้อผิดพลาดในการบันทึก");
             setIsProcessing(false);
@@ -515,12 +517,21 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
         });
     }, [items, productMap]);
 
-    const handlePrint = () => {
+    const handlePrint = async () => {
         const itemsWithProduct = items.map(item => ({
             ...item,
             product: item.product || productMap.get(item.productId)
         }));
-        setRequisitionToPrint({ ...requisition, items: itemsWithProduct });
+        const targetStatus = requisition.status === 'Submitted' ? 'Picking' : requisition.status;
+        setRequisitionToPrint({ ...requisition, status: targetStatus, items: itemsWithProduct });
+        if (requisition.status === 'Submitted' && !isPreview) {
+            try {
+                await supabaseService.updateRequisitionStatus(requisition.id, 'Picking');
+                if (onItemsUpdated) onItemsUpdated();
+            } catch (err) {
+                console.error('Failed to update status on print:', err);
+            }
+        }
     };
     
     const summary = useMemo(() => {
@@ -540,7 +551,28 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
 
     return (
         <div className="animate-fade-in">
-            {requisitionToPrint && <PickingListPrintView requisition={requisitionToPrint} departmentName={requisitionToPrint.departmentName || ''} documentSettings={documentSettings} personnel={personnel} />}
+            {requisitionToPrint && (
+                <>
+                    <div className="fixed top-4 right-4 z-50 no-print flex items-center gap-3 bg-slate-900/95 dark:bg-slate-800/95 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 animate-fade-in text-xs backdrop-blur-sm">
+                        <span className="flex items-center gap-1.5 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            พิมพ์เอกสารแล้ว (สถานะเปลี่ยนเป็นกำลังจัดของ)
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setRequisitionToPrint(null);
+                                setIsProcessing(false);
+                                onClose();
+                            }}
+                            className="px-3 py-1 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white font-bold rounded-lg shadow-sm transition-all"
+                        >
+                            เสร็จสิ้น / ปิดหน้านี้
+                        </button>
+                    </div>
+                    <PickingListPrintView requisition={requisitionToPrint} departmentName={requisitionToPrint.departmentName || ''} documentSettings={documentSettings} personnel={personnel} />
+                </>
+            )}
             
             {/* Modal: ตรวจสอบสต็อกไม่พอจ่าย หรือสต็อกเป็น 0 */}
             <Modal

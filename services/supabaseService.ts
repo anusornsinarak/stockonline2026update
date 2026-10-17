@@ -556,9 +556,8 @@ export const supabaseService = {
 
     async updateRequisitionStatus(id: string, status: RequisitionStatus) {
         await supabase.rpc('update_requisition_status', { p_requisition_id: id, p_new_status: status });
-        if (['Completed', 'Ready', 'PartiallyApproved', 'Picking'].includes(status)) {
-            await supabase.from('requisitions').update({ approved_at: new Date().toISOString() }).eq('id', id);
-        }
+        const { error: updErr } = await supabase.from('requisitions').update({ status } as any).eq('id', id);
+        if (updErr) console.warn('Direct status update warning:', updErr);
         await this.notifyDepartmentStatusChange(id, status);
     },
 
@@ -566,9 +565,6 @@ export const supabaseService = {
         const updateData: any = { status: status as any };
         if (reason !== undefined) {
             updateData.rejection_reason = reason;
-        }
-        if (['Completed', 'Ready', 'PartiallyApproved', 'Picking'].includes(status)) {
-            updateData.approved_at = new Date().toISOString();
         }
         const { error } = await supabase
             .from('requisitions')
@@ -678,10 +674,9 @@ export const supabaseService = {
         const { error: rpcErr } = await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: 'Simple Approval' });
         if (rpcErr) throw rpcErr;
         
-        // Update requisition status, approved_at, and submitted_at (only if not already set)
+        // Update requisition status and submitted_at (only if not already set)
         const updateData: any = { 
-            status: status,
-            approved_at: new Date().toISOString()
+            status: status
         };
         if (!originalReq?.submitted_at) {
             updateData.submitted_at = new Date().toISOString();
@@ -690,7 +685,11 @@ export const supabaseService = {
         if (originalReq?.requisition_number) {
             updateData.requisition_number = originalReq.requisition_number;
         }
-        await supabase.from('requisitions').update(updateData).eq('id', reqId);
+        const { error: updStatusErr } = await supabase.from('requisitions').update(updateData).eq('id', reqId);
+        if (updStatusErr) {
+            console.error('Failed to update requisition status to DB:', updStatusErr);
+            throw updStatusErr;
+        }
         await this.notifyDepartmentStatusChange(reqId, status);
 
         // FIX: The RPC might overwrite the original requested quantity with the approved quantity,
@@ -738,9 +737,7 @@ export const supabaseService = {
         const { error: rpcErr } = await supabase.rpc('process_requisition_approval', { p_requisition_id: reqId, p_items: items as any, p_edit_reason: editReason });
         if (rpcErr) throw rpcErr;
         
-        const updateData: any = {
-            approved_at: new Date().toISOString()
-        };
+        const updateData: any = {};
         // Set submitted_at to current date only if not already set
         if (!originalReq?.submitted_at) {
             updateData.submitted_at = new Date().toISOString();
@@ -750,7 +747,10 @@ export const supabaseService = {
             updateData.requisition_number = originalReq.requisition_number;
         }
         
-        await supabase.from('requisitions').update(updateData).eq('id', reqId);
+        if (Object.keys(updateData).length > 0) {
+            const { error: updReqErr } = await supabase.from('requisitions').update(updateData).eq('id', reqId);
+            if (updReqErr) console.warn('Update requisition metadata error:', updReqErr);
+        }
 
         // FIX: The RPC might overwrite the original requested quantity with the approved quantity,
         // or it might delete and recreate items (changing their IDs).

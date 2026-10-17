@@ -97,6 +97,18 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
         sessionStorage.setItem('manage_req_page', String(currentPage));
     }, [currentPage]);
 
+    const handlePrintRequisition = async (req: Requisition) => {
+        setRequisitionToPrint(req);
+        if (req.status === 'Submitted') {
+            try {
+                await supabaseService.updateRequisitionStatus(req.id, 'Picking');
+                if (onDataChange) onDataChange();
+            } catch (err) {
+                console.error('Failed to auto-update status to Picking on print:', err);
+            }
+        }
+    };
+
     useEffect(() => {
         if (requisitionToPrint) {
             const timer = setTimeout(() => {
@@ -167,11 +179,26 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
     return (
         <div className="space-y-6">
             {requisitionToPrint && (
-                <RequisitionPrintView 
-                    requisition={{...requisitionToPrint, departmentName: departmentMap.get(requisitionToPrint.departmentId)}} 
-                    productMap={productMap} 
-                    documentSettings={documentSettings} 
-                />
+                <>
+                    <div className="fixed top-4 right-4 z-50 no-print flex items-center gap-3 bg-slate-900/95 dark:bg-slate-800/95 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 animate-fade-in text-xs backdrop-blur-sm">
+                        <span className="flex items-center gap-1.5 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            พิมพ์เอกสารแล้ว
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setRequisitionToPrint(null)}
+                            className="px-3 py-1 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white font-bold rounded-lg shadow-sm transition-all"
+                        >
+                            เสร็จสิ้น / ปิดการพิมพ์
+                        </button>
+                    </div>
+                    <RequisitionPrintView 
+                        requisition={{...requisitionToPrint, departmentName: departmentMap.get(requisitionToPrint.departmentId)}} 
+                        productMap={productMap} 
+                        documentSettings={documentSettings} 
+                    />
+                </>
             )}
 
             <div className="no-print">
@@ -274,7 +301,7 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                                                                 <CubeIcon className="w-5 h-5"/>
                                                             </button>
                                                         )}
-                                                        <button onClick={() => setRequisitionToPrint(req)} className="text-blue-600 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900 rounded-full" title="พิมพ์ใบเบิก">
+                                                        <button onClick={() => handlePrintRequisition(req)} className="text-blue-600 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900 rounded-full" title="พิมพ์ใบเบิก">
                                                             <PrinterIcon className="w-5 h-5"/>
                                                         </button>
                                                     </div>
@@ -332,7 +359,7 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                                                             <CubeIcon className="w-4 h-4"/>
                                                         </button>
                                                     )}
-                                                    <button onClick={() => setRequisitionToPrint(req)} className="bg-blue-50 dark:bg-blue-900/50 text-blue-600 p-2 rounded-lg" title="พิมพ์ใบเบิก">
+                                                    <button onClick={() => handlePrintRequisition(req)} className="bg-blue-50 dark:bg-blue-900/50 text-blue-600 p-2 rounded-lg" title="พิมพ์ใบเบิก">
                                                         <PrinterIcon className="w-4 h-4"/>
                                                     </button>
                                                 </div>
@@ -391,7 +418,7 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                                 <h3 className="text-xl font-bold">{selectedReqForModal.name}</h3>
                                 <p className="text-sm text-slate-500">หน่วยงาน: {departmentMap.get(selectedReqForModal.departmentId)} | #{selectedReqForModal.requisitionNumber || 'Draft'}</p>
                             </div>
-                            <button onClick={() => setRequisitionToPrint(selectedReqForModal)} className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-blue-700 shadow-md">
+                            <button onClick={() => handlePrintRequisition(selectedReqForModal)} className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:bg-blue-700 shadow-md">
                                 <PrinterIcon className="w-5 h-5" /> พิมพ์
                             </button>
                         </div>
