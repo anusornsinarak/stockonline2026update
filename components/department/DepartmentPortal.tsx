@@ -63,7 +63,9 @@ export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
     const lastProcessedInitialTabRef = useRef<string | null>(null);
 
     const fetchCommonData = useCallback(async () => {
-        setIsLoadingTabData(true);
+        if (purchasePlan.length === 0) {
+            setIsLoadingTabData(true);
+        }
         try {
             const [plan, results, pers] = await Promise.all([
                 supabaseService.getPurchasePlan(nextFiscalYearBE),
@@ -78,7 +80,7 @@ export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
         } finally {
             setIsLoadingTabData(false);
         }
-    }, [nextFiscalYearBE]);
+    }, [nextFiscalYearBE, purchasePlan.length]);
 
     const hasSubmittedSurvey = allSurveyResults.some(r => r.departmentId === department.id);
     const isLocked = isSurveyForce && !hasSubmittedSurvey && !isLoadingTabData;
@@ -276,7 +278,7 @@ export const DepartmentPortal: React.FC<DepartmentPortalProps> = ({
                 </nav>
             </div>
             <div className="mt-6">
-                {isLoadingTabData ? <LoadingScreen message="กำลังโหลดข้อมูล..." /> : renderContent()}
+                {isLoadingTabData && purchasePlan.length === 0 ? <LoadingScreen message="กำลังโหลดข้อมูล..." /> : renderContent()}
             </div>
         </div>
     );

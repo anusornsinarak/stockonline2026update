@@ -185,7 +185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   }, [viewFiscalYear]);
   
   const fetchData = useCallback(async (isBackground = false) => {
-    if (!isBackground) {
+    if (!isBackground && data.products.length === 0) {
         setIsLoading(true);
     }
     

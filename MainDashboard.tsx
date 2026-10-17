@@ -198,7 +198,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ user, onNavigate }) => {
 
             {/* Main Content Dashboard */}
             <main className="flex-grow min-w-0">
-                <DashboardOverview user={user} />
+                <DashboardOverview user={user} onNavigate={onNavigate} />
             </main>
             
         </div>
