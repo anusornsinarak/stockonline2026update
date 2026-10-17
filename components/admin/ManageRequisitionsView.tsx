@@ -56,6 +56,27 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
     const [editingStatusReq, setEditingStatusReq] = useState<Requisition | null>(null);
     const [selectedReqForModal, setSelectedReqForModal] = useState<Requisition | null>(null);
     
+    useEffect(() => {
+        if (initialSubTab && initialSubTab !== activeSubTab) {
+            setActiveSubTab(initialSubTab as SubTab);
+        }
+    }, [initialSubTab]);
+
+    const handleResetFilters = () => {
+        setSearchTerm('');
+        setDeptFilter('all');
+        setStatusFilter('all');
+        setMonthFilter('all');
+        setCurrentPage(1);
+        sessionStorage.removeItem('manage_req_search');
+        sessionStorage.removeItem('manage_req_dept');
+        sessionStorage.removeItem('manage_req_status');
+        sessionStorage.removeItem('manage_req_month');
+        sessionStorage.setItem('manage_req_page', '1');
+    };
+
+    const hasActiveFilters = searchTerm.trim() !== '' || deptFilter !== 'all' || statusFilter !== 'all' || monthFilter !== 'all';
+    
     const [currentPage, setCurrentPage] = useState<number>(() => {
         const saved = sessionStorage.getItem('manage_req_page');
         const num = saved ? parseInt(saved, 10) : 1;
@@ -206,11 +227,19 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                     <nav className="-mb-px flex space-x-8">
                         <button onClick={() => setActiveSubTab('all')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'all' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
                             <ClipboardDocumentListIcon className="w-5 h-5" />
-                            ใบเบิกทั้งหมด
+                            <span>ใบเบิกทั้งหมด</span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                {(requisitions || []).length}
+                            </span>
                         </button>
                         <button onClick={() => setActiveSubTab('backorders')} className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeSubTab === 'backorders' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
                             <ArchiveBoxArrowDownIcon className="w-5 h-5" />
-                            รายการค้างจ่าย
+                            <span>รายการค้างจ่าย</span>
+                            {(backorders || []).length > 0 && (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                                    {(backorders || []).length}
+                                </span>
+                            )}
                         </button>
                     </nav>
                 </div>
@@ -250,6 +279,23 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                             </div>
                         </div>
 
+                        {/* Active filter badge & Reset button */}
+                        {hasActiveFilters && (
+                            <div className="flex items-center justify-between mt-3 px-4 py-2.5 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl text-xs text-sky-800 dark:text-sky-200">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">🔍 กำลังกรองข้อมูล:</span>
+                                    <span>พบ {filteredRequisitions.length} จากทั้งหมด {(requisitions || []).length} รายการ</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    className="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg shadow-sm transition-all"
+                                >
+                                    ล้างตัวกรองทั้งหมด
+                                </button>
+                            </div>
+                        )}
+
                         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden mt-6">
                             {/* Desktop Table View */}
                             <div className="hidden md:block">
@@ -261,7 +307,30 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
                                     {name: 'สถานะ', className: 'text-center w-40'}, 
                                     {name: 'ดำเนินการ', className: 'text-right w-36'}
                                 ]}>
-                                    {paginatedRequisitions.map(req => {
+                                    {paginatedRequisitions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="text-center py-12 text-slate-500">
+                                                <InboxIcon className="w-12 h-12 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                                                <p className="text-base font-bold text-slate-700 dark:text-slate-300">
+                                                    ไม่พบรายการใบเบิกตามเงื่อนไขที่เลือก
+                                                </p>
+                                                <p className="text-xs text-slate-400 mt-1">
+                                                    {hasActiveFilters 
+                                                        ? `มีรายการใบเบิกทั้งหมดในระบบ ${(requisitions || []).length} รายการ (กำลังกรองข้อมูลอยู่)` 
+                                                        : `ยังไม่มีรายการใบเบิกในระบบ`}
+                                                </p>
+                                                {hasActiveFilters && (
+                                                    <button 
+                                                        type="button"
+                                                        onClick={handleResetFilters} 
+                                                        className="mt-3 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
+                                                    >
+                                                        ล้างตัวกรองทั้งหมด (แสดงทั้งหมด {(requisitions || []).length} รายการ)
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ) : paginatedRequisitions.map(req => {
                                         const statusConfig = requisitionStatusMap[req.status] || { text: 'N/A', color: 'bg-gray-100' };
                                         
                                         let requestedValue = 0;
@@ -314,7 +383,28 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
 
                             {/* Mobile Card View */}
                             <div className="md:hidden divide-y dark:divide-slate-700">
-                                {paginatedRequisitions.map(req => {
+                                {paginatedRequisitions.length === 0 ? (
+                                    <div className="text-center py-12 text-slate-500 p-4">
+                                        <InboxIcon className="w-12 h-12 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                                        <p className="text-base font-bold text-slate-700 dark:text-slate-300">
+                                            ไม่พบรายการใบเบิกตามเงื่อนไขที่เลือก
+                                        </p>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            {hasActiveFilters 
+                                                ? `มีรายการใบเบิกทั้งหมดในระบบ ${(requisitions || []).length} รายการ (กำลังกรองข้อมูลอยู่)` 
+                                                : `ยังไม่มีรายการใบเบิกในระบบ`}
+                                        </p>
+                                        {hasActiveFilters && (
+                                            <button 
+                                                type="button"
+                                                onClick={handleResetFilters} 
+                                                className="mt-3 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
+                                            >
+                                                ล้างตัวกรองทั้งหมด (แสดงทั้งหมด {(requisitions || []).length} รายการ)
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : paginatedRequisitions.map(req => {
                                     const statusConfig = requisitionStatusMap[req.status] || { text: 'N/A', color: 'bg-gray-100' };
                                     let requestedValue = 0;
                                     let approvedValue = 0;
