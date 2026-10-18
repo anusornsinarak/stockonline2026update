@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { User, Requisition, Product, Department, InventoryItem, AppView } from '../types';
+import { User, Requisition, Product, Department, InventoryItem, AppView, requisitionStatusMap } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { getApprovedItemQuantity, getFiscalYearBE, getFiscalYearDateRange } from '../utils';
 import ChartBarIcon from './icons/ChartBarIcon';
@@ -9,6 +9,12 @@ import BuildingOfficeIcon from './icons/BuildingOfficeIcon';
 import ShoppingCartIcon from './icons/ShoppingCartIcon';
 import CubeIcon from './icons/CubeIcon';
 import ArrowPathIcon from './icons/ArrowPathIcon';
+import ClipboardDocumentListIcon from './icons/ClipboardDocumentListIcon';
+import MagnifyingGlassIcon from './icons/MagnifyingGlassIcon';
+import CheckCircleIcon from './icons/CheckCircleIcon';
+import InboxIcon from './icons/InboxIcon';
+import EyeIcon from './icons/EyeIcon';
+import Modal from './Modal';
 
 interface DashboardOverviewProps {
     user: User;
@@ -51,6 +57,23 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
     const [urgentFilter, setUrgentFilter] = useState<'all' | 'out_of_stock' | 'low_stock'>('all');
     const [urgentSearch, setUrgentSearch] = useState('');
     const [showAllUrgent, setShowAllUrgent] = useState(false);
+
+    // Requisition list filter & search within dashboard overview
+    const [reqSearch, setReqSearch] = useState('');
+    const [reqStatusFilter, setReqStatusFilter] = useState<'all' | 'pending' | 'completed' | 'other'>('all');
+    const [showAllReqs, setShowAllReqs] = useState(false);
+    const [selectedReqForModal, setSelectedReqForModal] = useState<Requisition | null>(null);
+
+    const handleNavigateToRequisitions = () => {
+        if (!onNavigate) return;
+        if (user.role === 'Admin') {
+            onNavigate({ type: 'admin', payload: 'requisitions' });
+        } else if (user.role === 'Warehouse') {
+            onNavigate({ type: 'warehouse', payload: 'requisitions' });
+        } else if (user.role === 'Department') {
+            onNavigate({ type: 'department', payload: 'requisition' });
+        }
+    };
 
     // Fetch dashboard data silently in the background if cache exists
     const loadData = useCallback(async (isManualRefresh = false) => {
@@ -116,6 +139,24 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
 
     const latestFiscalYear = availableFiscalYears[0] || currentFiscalYearBE;
 
+    const fiscalYearCounts = useMemo(() => {
+        const counts: Record<number, number> = {};
+        allRequisitions.forEach(r => {
+            const dateVal = r.approvedAt || r.submittedAt || r.createdAt;
+            if (dateVal) {
+                const fy = getFiscalYearBE(new Date(dateVal));
+                counts[fy] = (counts[fy] || 0) + 1;
+            }
+        });
+        return counts;
+    }, [allRequisitions]);
+
+    const departmentMap = useMemo(() => new Map(departments.map(d => [d.id, d.name])), [departments]);
+    const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
+
+    const formatCurrency = (val: number) => 
+        new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(val || 0);
+
     // Filter requisitions based on timeRange or Fiscal Year
     const { requisitions, timeRangeLabel } = useMemo(() => {
         if (timeRange === 'ALL') {
@@ -165,6 +206,27 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
             timeRangeLabel: `ปีงบประมาณ ${targetFY}` 
         };
     }, [allRequisitions, timeRange, latestFiscalYear]);
+
+    const dashboardRequisitionsList = useMemo(() => {
+        return requisitions.filter(r => {
+            const matchesSearch = !reqSearch.trim() || 
+                r.requisitionNumber?.toLowerCase().includes(reqSearch.toLowerCase()) ||
+                r.name?.toLowerCase().includes(reqSearch.toLowerCase()) ||
+                departmentMap.get(r.departmentId)?.toLowerCase().includes(reqSearch.toLowerCase()) ||
+                r.requesterName?.toLowerCase().includes(reqSearch.toLowerCase());
+            
+            let matchesStatus = true;
+            if (reqStatusFilter === 'pending') {
+                matchesStatus = ['Submitted', 'Picking', 'Ready', 'PartiallyApproved', 'Draft'].includes(r.status);
+            } else if (reqStatusFilter === 'completed') {
+                matchesStatus = r.status === 'Completed';
+            } else if (reqStatusFilter === 'other') {
+                matchesStatus = ['Rejected', 'Cancelled'].includes(r.status);
+            }
+
+            return matchesSearch && matchesStatus;
+        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [requisitions, reqSearch, reqStatusFilter, departmentMap]);
 
     // Top requisition stats calculation
     const stats = useMemo(() => {
@@ -363,11 +425,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                             className="w-full sm:w-auto py-2 pl-3 pr-8 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-sm"
                         >
                             <option value="FY_LATEST">
-                                📅 ปีงบประมาณ {latestFiscalYear} (ล่าสุด)
+                                📅 ปีงบประมาณ {latestFiscalYear} (ล่าสุด) - {fiscalYearCounts[latestFiscalYear] || 0} รายการ
                             </option>
                             {availableFiscalYears.filter(y => y !== latestFiscalYear).map(y => (
                                 <option key={y} value={`FY_${y}`}>
-                                    📅 ปีงบประมาณ {y}
+                                    📅 ปีงบประมาณ {y} - {fiscalYearCounts[y] || 0} รายการ
                                 </option>
                             ))}
                             <option disabled>──────────</option>
@@ -375,7 +437,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                             <option value="3M">3 เดือนล่าสุด</option>
                             <option value="6M">6 เดือนล่าสุด</option>
                             <option value="1Y">1 ปีล่าสุด</option>
-                            <option value="ALL">ทั้งหมด (ทุกช่วงเวลา)</option>
+                            <option value="ALL">ทั้งหมด (ทุกปีงบประมาณ) - {allRequisitions.length} รายการ</option>
                         </select>
                     </div>
 
@@ -415,11 +477,23 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                     </p>
                 </div>
 
-                <div className="bg-gradient-to-br from-rose-500 to-pink-600 p-6 rounded-2xl text-white shadow-md relative overflow-hidden">
-                    <div className="absolute -right-4 -bottom-4 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
-                    <h3 className="font-semibold text-rose-100 flex items-center gap-2 mb-2 text-sm">
-                        <ChartBarIcon className="w-5 h-5" /> จำนวนรายการเบิกทั้งหมด ({timeRangeLabel})
-                    </h3>
+                <div 
+                    onClick={() => {
+                        const el = document.getElementById('recent-requisitions-section');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="bg-gradient-to-br from-rose-500 to-pink-600 p-6 rounded-2xl text-white shadow-md relative overflow-hidden cursor-pointer hover:shadow-xl transition-all group"
+                    title="คลิกเพื่อเลื่อนไปดูตารางรายการเบิก"
+                >
+                    <div className="absolute -right-4 -bottom-4 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none group-hover:scale-125 transition-transform"></div>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-rose-100 flex items-center gap-2 text-sm">
+                            <ChartBarIcon className="w-5 h-5" /> จำนวนรายการเบิกทั้งหมด ({timeRangeLabel})
+                        </h3>
+                        <span className="text-[10px] font-bold bg-white/20 group-hover:bg-white/30 px-2.5 py-1 rounded-full text-white backdrop-blur-sm transition-all flex items-center gap-1">
+                            ดูตารางใบเบิก ↓
+                        </span>
+                    </div>
                     <p className="text-3xl font-black tracking-tight">
                         {requisitions.filter(r => ['Ready', 'PartiallyApproved', 'Completed', 'Picking'].includes(r.status)).length.toLocaleString()} <span className="text-lg font-normal text-rose-100">บิล</span>
                     </p>
@@ -639,6 +713,307 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                 )}
             </div>
 
+            {/* REQUISITION LIST SECTION (รายการใบเบิกเวชภัณฑ์) */}
+            <div id="recent-requisitions-section" className="bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                    <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+                            <ClipboardDocumentListIcon className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                                    รายการใบเบิกเวชภัณฑ์
+                                </h3>
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
+                                    {dashboardRequisitionsList.length} รายการ
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                รายการใบเบิกเวชภัณฑ์ทั้งหมดที่บันทึกในระบบ ({timeRangeLabel}) สามารถคลิกดูรายละเอียดหรือติดตามสถานะได้ทันที
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Quick navigation to full module */}
+                    {onNavigate && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handleNavigateToRequisitions}
+                                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                            >
+                                <ClipboardDocumentListIcon className="w-4 h-4" />
+                                <span>เปิดหน้าระบบเบิกเต็มรูปแบบ →</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Sub-Filter Bar */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 pb-2">
+                    <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                        <button
+                            type="button"
+                            onClick={() => setReqStatusFilter('all')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                reqStatusFilter === 'all'
+                                    ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            ทั้งหมด ({requisitions.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setReqStatusFilter('pending')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                reqStatusFilter === 'pending'
+                                    ? 'bg-amber-600 text-white shadow-sm'
+                                    : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                            }`}
+                        >
+                            รอดำเนินการ / จัดของ ({requisitions.filter(r => ['Submitted', 'Picking', 'Ready', 'PartiallyApproved', 'Draft'].includes(r.status)).length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setReqStatusFilter('completed')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                reqStatusFilter === 'completed'
+                                    ? 'bg-emerald-600 text-white shadow-sm'
+                                    : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                            }`}
+                        >
+                            รับของแล้ว ({requisitions.filter(r => r.status === 'Completed').length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setReqStatusFilter('other')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                reqStatusFilter === 'other'
+                                    ? 'bg-red-600 text-white shadow-sm'
+                                    : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40'
+                            }`}
+                        >
+                            ไม่อนุมัติ / ยกเลิก ({requisitions.filter(r => ['Rejected', 'Cancelled'].includes(r.status)).length})
+                        </button>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                        <input
+                            type="text"
+                            placeholder="ค้นหาเลขที่, ชื่อใบเบิก, หน่วยงาน..."
+                            value={reqSearch}
+                            onChange={(e) => setReqSearch(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                        <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                        {reqSearch && (
+                            <button
+                                type="button"
+                                onClick={() => setReqSearch('')}
+                                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Filter info banner if search or status filter active */}
+                {(reqSearch.trim() !== '' || reqStatusFilter !== 'all') && (
+                    <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-800 rounded-lg text-xs text-sky-800 dark:text-sky-200">
+                        <span>🔍 ผลการกรอง: พบ {dashboardRequisitionsList.length} จาก {requisitions.length} รายการ</span>
+                        <button
+                            type="button"
+                            onClick={() => { setReqSearch(''); setReqStatusFilter('all'); }}
+                            className="text-sky-600 dark:text-sky-400 font-bold hover:underline"
+                        >
+                            ล้างตัวกรอง
+                        </button>
+                    </div>
+                )}
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto mt-2 border border-slate-200 dark:border-slate-700 rounded-xl">
+                    <table className="min-w-full text-xs text-left">
+                        <thead className="bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                                <th className="p-3 w-28">เลขที่ใบเบิก</th>
+                                <th className="p-3">ชื่อใบเบิก / หน่วยงาน</th>
+                                <th className="p-3 text-center w-28">วันที่ขอเบิก</th>
+                                <th className="p-3 text-right w-28">มูลค่าที่ขอ</th>
+                                <th className="p-3 text-right w-28">มูลค่าอนุมัติ</th>
+                                <th className="p-3 text-center w-36">สถานะ</th>
+                                <th className="p-3 text-center w-24">รายละเอียด</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {(showAllReqs ? dashboardRequisitionsList : dashboardRequisitionsList.slice(0, 5)).map(req => {
+                                const statusConfig = requisitionStatusMap[req.status] || { text: 'N/A', color: 'bg-gray-100 text-gray-800' };
+                                let requestedValue = 0;
+                                let approvedValue = 0;
+                                (req.items || []).forEach(item => {
+                                    const product = productMap.get(item.productId);
+                                    const price = item.pricePerUnit ?? product?.pricePerUnit ?? 0;
+                                    requestedValue += (item.quantity * price);
+                                    const showApproved = ['Picking', 'PartiallyApproved', 'Ready', 'Completed'].includes(req.status);
+                                    const qty = (showApproved && item.status !== 'Backordered') ? (item.approvedQuantity || 0) : 0;
+                                    approvedValue += (qty * price);
+                                });
+                                const canShowApprovedVal = ['Picking', 'Ready', 'Completed', 'PartiallyApproved'].includes(req.status);
+
+                                return (
+                                    <tr 
+                                        key={req.id} 
+                                        onClick={() => setSelectedReqForModal(req)}
+                                        className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors cursor-pointer group"
+                                    >
+                                        <td className="p-3 font-bold text-slate-700 dark:text-slate-200">
+                                            {req.requisitionNumber || '-'}
+                                        </td>
+                                        <td className="p-3">
+                                            <div className="font-semibold text-slate-800 dark:text-slate-100 group-hover:text-sky-600 transition-colors">
+                                                {req.name}
+                                            </div>
+                                            <div className="text-[11px] text-sky-600 dark:text-sky-400 font-medium">
+                                                {departmentMap.get(req.departmentId) || 'ไม่ระบุหน่วยงาน'}
+                                                {req.requesterName && <span className="text-slate-400 ml-1.5">• ผู้ขอ: {req.requesterName}</span>}
+                                            </div>
+                                        </td>
+                                        <td className="p-3 text-center text-slate-500 dark:text-slate-400 text-[11px]">
+                                            {req.createdAt ? new Date(req.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}
+                                        </td>
+                                        <td className="p-3 text-right text-slate-500 dark:text-slate-400">
+                                            {formatCurrency(requestedValue)}
+                                        </td>
+                                        <td className="p-3 text-right font-black text-sky-600 dark:text-sky-400">
+                                            {canShowApprovedVal ? formatCurrency(approvedValue) : '-'}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border shadow-sm ${statusConfig.color}`}>
+                                                {statusConfig.warehouseText || statusConfig.text}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-center" onClick={(e) => { e.stopPropagation(); setSelectedReqForModal(req); }}>
+                                            <button 
+                                                type="button"
+                                                className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-900/40 text-sky-600 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-800 transition-colors inline-flex items-center justify-center"
+                                                title="ดูรายละเอียดใบเบิก"
+                                            >
+                                                <EyeIcon className="w-4 h-4" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+
+                            {dashboardRequisitionsList.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-slate-500 dark:text-slate-400">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <InboxIcon className="w-10 h-10 text-slate-300 dark:text-slate-600 mb-2" />
+                                            <p className="font-bold text-slate-700 dark:text-slate-200">
+                                                ไม่พบรายการใบเบิกตามเงื่อนไขที่เลือก
+                                            </p>
+                                            <p className="text-xs text-slate-400 mt-1">
+                                                {reqSearch.trim() || reqStatusFilter !== 'all'
+                                                    ? 'ลองเปลี่ยนหรือล้างคำค้นหา/ตัวกรองสถานะ'
+                                                    : `ยังไม่มีรายการใบเบิกในช่วง ${timeRangeLabel}`}
+                                            </p>
+                                            {(reqSearch.trim() || reqStatusFilter !== 'all') && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setReqSearch(''); setReqStatusFilter('all'); }}
+                                                    className="mt-3 px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all"
+                                                >
+                                                    ล้างตัวกรองทั้งหมด
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl mt-2 overflow-hidden">
+                    {(showAllReqs ? dashboardRequisitionsList : dashboardRequisitionsList.slice(0, 5)).map(req => {
+                        const statusConfig = requisitionStatusMap[req.status] || { text: 'N/A', color: 'bg-gray-100 text-gray-800' };
+                        let requestedValue = 0;
+                        let approvedValue = 0;
+                        (req.items || []).forEach(item => {
+                            const product = productMap.get(item.productId);
+                            const price = item.pricePerUnit ?? product?.pricePerUnit ?? 0;
+                            requestedValue += (item.quantity * price);
+                            const showApproved = ['Picking', 'PartiallyApproved', 'Ready', 'Completed'].includes(req.status);
+                            const qty = (showApproved && item.status !== 'Backordered') ? (item.approvedQuantity || 0) : 0;
+                            approvedValue += (qty * price);
+                        });
+                        const canShowApprovedVal = ['Picking', 'Ready', 'Completed', 'PartiallyApproved'].includes(req.status);
+
+                        return (
+                            <div 
+                                key={req.id} 
+                                onClick={() => setSelectedReqForModal(req)}
+                                className="p-3.5 space-y-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 active:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                                <div className="flex justify-between items-start gap-2">
+                                    <div>
+                                        <div className="text-[10px] font-bold text-slate-400">
+                                            #{req.requisitionNumber || 'ไม่มีเลขที่'} • {req.createdAt ? new Date(req.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}
+                                        </div>
+                                        <div className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight mt-0.5">
+                                            {req.name}
+                                        </div>
+                                        <div className="text-xs font-semibold text-sky-600 dark:text-sky-400">
+                                            {departmentMap.get(req.departmentId) || 'ไม่ระบุหน่วยงาน'}
+                                        </div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shadow-sm flex-shrink-0 ${statusConfig.color}`}>
+                                        {statusConfig.warehouseText || statusConfig.text}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center pt-1 border-t border-slate-50 dark:border-slate-700/60 text-xs">
+                                    <span className="text-slate-400 text-[11px]">
+                                        มูลค่าขอ: {formatCurrency(requestedValue)}
+                                    </span>
+                                    {canShowApprovedVal && (
+                                        <span className="font-bold text-sky-600 dark:text-sky-400">
+                                            อนุมัติ: {formatCurrency(approvedValue)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {dashboardRequisitionsList.length === 0 && (
+                        <div className="p-6 text-center text-slate-500 dark:text-slate-400">
+                            <InboxIcon className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                            <p className="font-bold text-sm">ไม่พบรายการใบเบิกตามเงื่อนไข</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Show All / Collapse Toggle */}
+                {dashboardRequisitionsList.length > 5 && (
+                    <div className="pt-3 text-center border-t border-slate-100 dark:border-slate-700 mt-3 flex items-center justify-center gap-4">
+                        <button
+                            type="button"
+                            onClick={() => setShowAllReqs(!showAllReqs)}
+                            className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:text-orange-700 hover:underline px-4 py-1.5"
+                        >
+                            {showAllReqs 
+                                ? '▲ ย่อแสดงเพียง 5 รายการ' 
+                                : `▼ ดูรายการใบเบิกทั้งหมด (${dashboardRequisitionsList.length} รายการ)`}
+                        </button>
+                    </div>
+                )}
+            </div>
+
             {/* Bottom 4 Analytics Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
@@ -727,6 +1102,111 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                 </div>
                 )}
             </div>
+
+            {/* Requisition Details Modal */}
+            {selectedReqForModal && (
+                <Modal isOpen={!!selectedReqForModal} onClose={() => setSelectedReqForModal(null)} title="รายละเอียดใบเบิกเวชภัณฑ์" size="3xl">
+                    <div className="space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b dark:border-slate-700 pb-4">
+                            <div>
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                    เลขที่: {selectedReqForModal.requisitionNumber || 'ไม่มีเลขที่ (Draft)'}
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                                    {selectedReqForModal.name}
+                                </h3>
+                                <p className="text-sm text-sky-600 font-semibold">
+                                    หน่วยงาน: {departmentMap.get(selectedReqForModal.departmentId) || 'ไม่ระบุหน่วยงาน'}
+                                    {selectedReqForModal.requesterName && <span className="text-slate-500 font-normal ml-2">• ผู้ขอเบิก: {selectedReqForModal.requesterName}</span>}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold border shadow-sm ${requisitionStatusMap[selectedReqForModal.status]?.color || 'bg-gray-100'}`}>
+                                    {requisitionStatusMap[selectedReqForModal.status]?.warehouseText || requisitionStatusMap[selectedReqForModal.status]?.text}
+                                </span>
+                            </div>
+                        </div>
+
+                        {(selectedReqForModal.status === 'Rejected' || selectedReqForModal.status === 'Cancelled') && selectedReqForModal.rejectionReason && (
+                            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                                <p className="text-xs font-bold text-red-800 dark:text-red-300 mb-1">
+                                    เหตุผลที่{selectedReqForModal.status === 'Rejected' ? 'ไม่อนุมัติ' : 'ยกเลิก'}:
+                                </p>
+                                <p className="text-sm text-red-700 dark:text-red-400">
+                                    {selectedReqForModal.rejectionReason}
+                                </p>
+                            </div>
+                        )}
+
+                        <div className="overflow-x-auto border dark:border-slate-700 rounded-xl">
+                            <table className="min-w-full text-xs">
+                                <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-300">
+                                    <tr>
+                                        <th className="p-3 text-left font-bold">ลำดับ</th>
+                                        <th className="p-3 text-left font-bold">รายการเวชภัณฑ์</th>
+                                        <th className="p-3 text-center font-bold w-20">ขอเบิก</th>
+                                        <th className="p-3 text-center font-bold w-20">อนุมัติ</th>
+                                        <th className="p-3 text-right font-bold w-28">ราคา/หน่วย</th>
+                                        <th className="p-3 text-right font-bold w-32">มูลค่ารวม</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y dark:divide-slate-700">
+                                    {(selectedReqForModal.items || []).map((item, idx) => {
+                                        const product = productMap.get(item.productId);
+                                        const price = item.pricePerUnit || product?.pricePerUnit || 0;
+                                        const showApproved = ['Picking', 'Ready', 'Completed', 'PartiallyApproved'].includes(selectedReqForModal.status);
+                                        const approvedQty = showApproved ? (item.approvedQuantity || 0) : 0;
+                                        const itemTotal = showApproved ? (approvedQty * price) : (item.quantity * price);
+
+                                        return (
+                                            <tr key={item.id || idx} className="hover:bg-slate-50/50">
+                                                <td className="p-3 text-slate-400 font-medium">{idx + 1}</td>
+                                                <td className="p-3">
+                                                    <div className="font-semibold text-slate-800 dark:text-slate-200">{product?.name || item.productId}</div>
+                                                    <div className="text-[11px] text-slate-400">หน่วย: {product?.unit || '-'}</div>
+                                                </td>
+                                                <td className="p-3 text-center font-medium">{item.quantity}</td>
+                                                <td className="p-3 text-center font-bold text-sky-600">{showApproved ? approvedQty : '-'}</td>
+                                                <td className="p-3 text-right text-slate-500">{formatCurrency(price)}</td>
+                                                <td className="p-3 text-right font-bold text-slate-800 dark:text-slate-100">{formatCurrency(itemTotal)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {(selectedReqForModal.items || []).length === 0 && (
+                                        <tr>
+                                            <td colSpan={6} className="p-6 text-center text-slate-400">
+                                                ไม่มีรายการเวชภัณฑ์ในใบเบิกนี้
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+                            {onNavigate && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedReqForModal(null);
+                                        handleNavigateToRequisitions();
+                                    }}
+                                    className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1"
+                                >
+                                    <span>ไปยังระบบจัดการใบเบิกเพื่อจัดการต่อ →</span>
+                                </button>
+                            )}
+                            <button 
+                                type="button"
+                                onClick={() => setSelectedReqForModal(null)} 
+                                className="px-6 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition-colors"
+                            >
+                                ปิดหน้าต่าง
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

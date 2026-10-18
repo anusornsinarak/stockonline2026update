@@ -306,7 +306,7 @@ export const supabaseService = {
             requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position,
             receiverName: r.receiver_name,
             rejectionReason: r.rejection_reason,
-            items: (r as any).requisition_items.map((i: any) => ({
+            items: ((r as any).requisition_items || []).map((i: any) => ({
                 id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
                 pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
                 departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
@@ -326,7 +326,7 @@ export const supabaseService = {
             requesterName: r.requester_name,
             requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position, receiverName: r.receiver_name,
             rejectionReason: r.rejection_reason,
-            items: (r as any).requisition_items.map((i: any) => ({
+            items: ((r as any).requisition_items || []).map((i: any) => ({
                 id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
                 pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
                 departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
@@ -355,7 +355,7 @@ export const supabaseService = {
             requesterName: r.requester_name,
             requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position,
             receiverName: r.receiver_name,
-            items: (r as any).requisition_items.map((i: any) => ({
+            items: ((r as any).requisition_items || []).map((i: any) => ({
                 id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
                 pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
                 departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
@@ -380,7 +380,7 @@ export const supabaseService = {
             requesterName: data.requester_name,
             requesterPosition: data.requester_position, approverName: data.approver_name, approverPosition: data.approver_position,
             receiverName: data.receiver_name,
-            items: (data as any).requisition_items.map((i: any) => ({
+            items: ((data as any).requisition_items || []).map((i: any) => ({
                 id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
                 pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
                 departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,

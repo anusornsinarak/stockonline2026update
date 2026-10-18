@@ -46,7 +46,11 @@ export const ManageRequisitionsView: React.FC<ManageRequisitionsViewProps> = (pr
     const { requisitions, departments, allProducts, inventory, backorders, onDataChange, onViewPickingList, onOpenCreateForDeptModal, onOpenReturnModal, initialSubTab, documentSettings } = props;
     
     const [activeSubTab, setActiveSubTab] = useState<SubTab>(() => {
-        return (initialSubTab as SubTab) || (sessionStorage.getItem('manage_req_subtab') as SubTab) || 'all';
+        const saved = sessionStorage.getItem('manage_req_subtab');
+        if (initialSubTab && (initialSubTab === 'all' || initialSubTab === 'backorders')) {
+            return initialSubTab as SubTab;
+        }
+        return saved === 'backorders' ? 'backorders' : 'all';
     });
     const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem('manage_req_search') || '');
     const [deptFilter, setDeptFilter] = useState(() => sessionStorage.getItem('manage_req_dept') || 'all');
