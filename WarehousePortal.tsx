@@ -222,6 +222,15 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+    // Silently refresh in the background on realtime notification or requisition update
+    useEffect(() => {
+        const handleBackgroundRefresh = () => {
+            fetchData(true);
+        };
+        window.addEventListener('app-data-refresh', handleBackgroundRefresh);
+        return () => window.removeEventListener('app-data-refresh', handleBackgroundRefresh);
+    }, [fetchData]);
+
     const handleBannerRefresh = () => { setShowRefreshBanner(false); fetchData(true); };
 
     const handleViewPickingList = (req: Requisition, isPreview: boolean) => {

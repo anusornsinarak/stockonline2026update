@@ -120,6 +120,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
         loadData(false);
     }, [loadData]);
 
+    // Auto-refresh in background when a requisition or notification is received
+    useEffect(() => {
+        const handleBackgroundRefresh = () => {
+            loadData(false);
+        };
+        window.addEventListener('app-data-refresh', handleBackgroundRefresh);
+        return () => window.removeEventListener('app-data-refresh', handleBackgroundRefresh);
+    }, [loadData]);
+
     const formatNumber = (num: number) => num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     // Determine fiscal years from current date and requisition data

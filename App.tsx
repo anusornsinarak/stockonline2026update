@@ -164,16 +164,44 @@ const App: React.FC = () => {
     return () => authListener.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-      if (user?.id) {
-          fetchNotifications(true);
-          const interval = setInterval(() => {
-              fetchNotifications();
-          }, 60000);
-          return () => clearInterval(interval);
-      }
-  }, [user?.id, fetchNotifications]);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const triggerBackgroundRefresh = useCallback((source: string) => {
+      if (refreshTimeoutRef.current) {
+          clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+          fetchNotifications(true);
+          window.dispatchEvent(new CustomEvent('app-data-refresh', { detail: { source, timestamp: Date.now() } }));
+      }, 500);
+  }, [fetchNotifications]);
+
+  // Periodic background sync & visibility change sync
+  useEffect(() => {
+      if (!user?.id) return;
+      fetchNotifications(true);
+
+      const interval = setInterval(() => {
+          fetchNotifications(true);
+          triggerBackgroundRefresh('periodic-sync');
+      }, 45000);
+
+      const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') {
+              fetchNotifications(true);
+              triggerBackgroundRefresh('tab-visibility');
+          }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+          clearInterval(interval);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+  }, [user?.id, fetchNotifications, triggerBackgroundRefresh]);
+
+  // Realtime WebSocket channel for instant background updates
   useEffect(() => {
       if (!user?.id) {
           if (activeChannelRef.current) {
@@ -187,7 +215,8 @@ const App: React.FC = () => {
           supabase.removeChannel(activeChannelRef.current);
       }
 
-      const channel = supabase.channel(`notifications-user-${user.id}`)
+      const channel = supabase.channel(`realtime-sync-${user.id}`)
+          // 1. New notifications for current user
           .on('postgres_changes', { 
               event: 'INSERT', 
               schema: 'public', 
@@ -195,15 +224,46 @@ const App: React.FC = () => {
               filter: `recipient_id=eq.${user.id}` 
           },
           (payload) => {
-              fetchNotifications();
-          }
-          ).subscribe();
+              // Play sound, show notification alert
+              fetchNotifications(false);
+              // Trigger silent background refresh of dashboard and lists
+              triggerBackgroundRefresh('notification-new');
+          })
+          // 2. Notification update (marked read, etc.)
+          .on('postgres_changes', { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'notifications', 
+              filter: `recipient_id=eq.${user.id}` 
+          },
+          () => {
+              fetchNotifications(true);
+          })
+          // 3. Requisitions created or updated (submitted, approved, status changed)
+          .on('postgres_changes', { 
+              event: '*', 
+              schema: 'public', 
+              table: 'requisitions' 
+          },
+          (payload) => {
+              triggerBackgroundRefresh(`requisition-${payload.eventType}`);
+          })
+          // 4. Requisition items updated
+          .on('postgres_changes', { 
+              event: '*', 
+              schema: 'public', 
+              table: 'requisition_items' 
+          },
+          (payload) => {
+              triggerBackgroundRefresh(`requisition-items-${payload.eventType}`);
+          })
+          .subscribe();
 
       activeChannelRef.current = channel;
       return () => { 
           if (activeChannelRef.current) supabase.removeChannel(activeChannelRef.current); 
       };
-  }, [user?.id, fetchNotifications]);
+  }, [user?.id, fetchNotifications, triggerBackgroundRefresh]);
   
   const handleThemeToggle = () => {
     document.documentElement.classList.toggle('dark');

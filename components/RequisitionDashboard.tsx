@@ -437,6 +437,15 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+    // Silently refresh in the background on realtime notification or requisition update
+    useEffect(() => {
+        const handleBackgroundRefresh = () => {
+            fetchData(true);
+        };
+        window.addEventListener('app-data-refresh', handleBackgroundRefresh);
+        return () => window.removeEventListener('app-data-refresh', handleBackgroundRefresh);
+    }, [fetchData]);
+
     const toggleExpand = (reqId: string) => {
         setExpandedReqs(prev => {
             const newSet = new Set(prev);

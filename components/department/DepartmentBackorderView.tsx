@@ -105,6 +105,14 @@ export const DepartmentBackorderView: React.FC<{ department: Department }> = ({ 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    useEffect(() => {
+        const handleBackgroundRefresh = () => {
+            fetchData();
+        };
+        window.addEventListener('app-data-refresh', handleBackgroundRefresh);
+        return () => window.removeEventListener('app-data-refresh', handleBackgroundRefresh);
+    }, [fetchData]);
     
      const handlePrint = () => {
         window.print();

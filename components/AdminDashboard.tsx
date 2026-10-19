@@ -237,6 +237,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       }).catch(console.error);
   }, [fetchData, user.username]);
 
+  // Silently refresh in the background on realtime notification or requisition update
+  useEffect(() => {
+      const handleBackgroundRefresh = () => {
+          fetchData(true);
+      };
+      window.addEventListener('app-data-refresh', handleBackgroundRefresh);
+      return () => window.removeEventListener('app-data-refresh', handleBackgroundRefresh);
+  }, [fetchData]);
+
   useEffect(() => {
     if (initialTab) {
         const tab = typeof initialTab === 'string' ? initialTab : initialTab.tab;
