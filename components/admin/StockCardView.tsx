@@ -89,6 +89,9 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         });
     }, []);
 
+    const currentStock = inventoryMap.get(selectedProductId) ?? 0;
+    const inventoryValue = currentStock * (selectedProduct?.pricePerUnit || 0);
+
     const fetchAndProcessHistory = useCallback(async () => {
         if (!selectedProduct || !dateRange.start || !dateRange.end) {
             setTransactions([]);
@@ -97,33 +100,13 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         setIsLoading(true);
         setError('');
         try {
+            // Fetch all transactions up to dateRange.end (or all available history)
             const allHistory = await supabaseService.getProductTransactionHistory(selectedProduct.id, dateRange.end);
-            const startDate = new Date(dateRange.start);
-            startDate.setHours(0, 0, 0, 0);
-
-            let openingBalance = 0;
-
-            (allHistory || []).forEach(tx => {
-                if (new Date(tx.transactionDate) < startDate) {
-                    openingBalance += tx.quantityIn - tx.quantityOut;
-                }
-            });
-
-            const transactionsInRange = (allHistory || []).filter(tx => new Date(tx.transactionDate) >= startDate);
-            const openingRecord: (Partial<ProductTransaction> & { balance: number }) = {
-                transactionDate: startDate,
-                transactionType: 'ยอดยกมา',
-                referenceDocument: '-',
-                departmentName: null,
-                quantityIn: 0,
-                quantityOut: 0,
-                balance: openingBalance,
-            };
-
-            let runningBalance = openingBalance;
-            const processedTransactions = transactionsInRange.map(tx => {
-                let qIn = tx.quantityIn || 0;
-                let qOut = tx.quantityOut || 0;
+            
+            // 1. Clean and normalize all transactions
+            const cleanTxs = (allHistory || []).map(tx => {
+                let qIn = Number(tx.quantityIn) || 0;
+                let qOut = Number(tx.quantityOut) || 0;
                 
                 // Normalize negative inputs so they show in the correct column
                 if (qIn < 0) {
@@ -135,22 +118,81 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
                     qOut = 0;
                 }
 
-                runningBalance += qIn - qOut;
-                return { ...tx, quantityIn: qIn, quantityOut: qOut, balance: runningBalance };
+                return {
+                    ...tx,
+                    transactionDate: new Date(tx.transactionDate),
+                    quantityIn: qIn,
+                    quantityOut: qOut
+                };
             });
 
-            setTransactions([openingRecord, ...processedTransactions]);
+            // 2. Sort chronologically from past to present (Ascending by timestamp)
+            cleanTxs.sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime());
+
+            // 3. Anchor calculation to Single Source of Truth: current_stock from inventory table
+            // Formula: Initial Lifetime Balance = Current Stock - Sum of all lifetime movements
+            const totalLifetimeMovement = cleanTxs.reduce((sum, tx) => sum + tx.quantityIn - tx.quantityOut, 0);
+            const initialLifetimeBalance = currentStock - totalLifetimeMovement;
+
+            // 4. Calculate line-by-line running balance:
+            // ยอดคงเหลือ (Balance) = ยอดคงเหลือก่อนหน้า + รับเข้า + ปรับสต็อก - จ่ายออก
+            let running = initialLifetimeBalance;
+            const txsWithCalculatedBalance = cleanTxs.map(tx => {
+                running = running + tx.quantityIn - tx.quantityOut;
+                return {
+                    ...tx,
+                    balance: running
+                };
+            });
+
+            // 5. Date Range Filtering
+            const startDate = new Date(dateRange.start);
+            startDate.setHours(0, 0, 0, 0);
+            const endDate = new Date(dateRange.end);
+            endDate.setHours(23, 59, 59, 999);
+
+            // Calculate opening balance at startDate
+            const txsBeforeStart = txsWithCalculatedBalance.filter(tx => tx.transactionDate < startDate);
+            const openingBalance = txsBeforeStart.length > 0
+                ? txsBeforeStart[txsBeforeStart.length - 1].balance
+                : initialLifetimeBalance;
+
+            const openingRecord: (Partial<ProductTransaction> & { balance: number }) = {
+                transactionDate: startDate,
+                transactionType: 'ยอดยกมา',
+                referenceDocument: '-',
+                departmentName: 'ยอดยกมาต้นงวด',
+                quantityIn: 0,
+                quantityOut: 0,
+                balance: openingBalance,
+            };
+
+            const transactionsInRange = txsWithCalculatedBalance.filter(tx => {
+                return tx.transactionDate >= startDate && tx.transactionDate <= endDate;
+            });
+
+            // In Ascending order (อดีต -> ปัจจุบัน)
+            setTransactions([openingRecord, ...transactionsInRange]);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'ไม่สามารถโหลดประวัติได้');
         } finally {
             setIsLoading(false);
         }
-    }, [selectedProduct, dateRange]);
-
+    }, [selectedProduct, dateRange, currentStock]);
 
     useEffect(() => {
         fetchAndProcessHistory();
-    }, [selectedProduct, dateRange, fetchAndProcessHistory, inventory]); 
+    }, [fetchAndProcessHistory, inventory]); 
+
+    // Listen to real-time background refresh events
+    useEffect(() => {
+        const handleRefresh = (e: any) => {
+            onDataChange();
+            fetchAndProcessHistory();
+        };
+        window.addEventListener('app-data-refresh', handleRefresh);
+        return () => window.removeEventListener('app-data-refresh', handleRefresh);
+    }, [onDataChange, fetchAndProcessHistory]);
 
     // Handle outside click for searchable select
     useEffect(() => {
@@ -162,6 +204,8 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
     const latestPurchase = useMemo(() => {
         if (!selectedProduct) return null;
@@ -199,20 +243,38 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
 
     const { summary, sortedAndFilteredTransactions } = useMemo(() => {
         let items = [...transactions];
+        
+        // Exclude opening record when summing in-range stats
+        const movementItems = items.filter(tx => tx.transactionType !== 'ยอดยกมา');
+
+        // Summary Card Rules:
+        // - totalIn: Sum qty_in for receive & positive adjustment transactions in date range
+        // - totalOut: Sum qty_out for issue transactions in date range
+        const totalIn = movementItems
+            .filter(tx => ['รับเข้า', 'RECEIVE', 'รับคืน', 'RETURN', 'ปรับสต็อก', 'ADJUSTMENT'].includes(tx.transactionType || '') && (tx.quantityIn || 0) > 0)
+            .reduce((sum, tx) => sum + (tx.quantityIn || 0), 0);
+
+        const totalOut = movementItems
+            .filter(tx => ['เบิกจ่าย', 'ISSUE'].includes(tx.transactionType || '') && (tx.quantityOut || 0) > 0)
+            .reduce((sum, tx) => sum + (tx.quantityOut || 0), 0);
+
+        // Apply type filter if selected
         if (typeFilter !== 'all') {
             items = items.filter(tx => tx.transactionType === typeFilter || tx.transactionType === 'ยอดยกมา');
         }
-        
-        const summaryStats = items.slice(1).reduce((acc, tx) => {
-             acc.totalIn += tx.quantityIn || 0;
-             if (tx.transactionType === 'เบิกจ่าย') {
-                 acc.totalOut += tx.quantityOut || 0;
-             }
-             return acc;
-        }, { totalIn: 0, totalOut: 0 });
 
-        return { summary: summaryStats, sortedAndFilteredTransactions: items.sort((a,b) => new Date(b.transactionDate!).getTime() - new Date(a.transactionDate!).getTime()) };
-    }, [transactions, typeFilter]);
+        // Sort items: default is 'asc' (อดีต -> ปัจจุบัน)
+        const sorted = items.sort((a, b) => {
+            const timeA = new Date(a.transactionDate!).getTime();
+            const timeB = new Date(b.transactionDate!).getTime();
+            return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
+        });
+
+        return { 
+            summary: { totalIn, totalOut }, 
+            sortedAndFilteredTransactions: sorted 
+        };
+    }, [transactions, typeFilter, sortDirection]);
 
     const handleExport = () => {
         if (!selectedProduct) return;
@@ -246,9 +308,6 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         setIsDropdownOpen(false);
     };
 
-    const currentStock = inventoryMap.get(selectedProductId) ?? 0;
-    const inventoryValue = currentStock * (selectedProduct?.pricePerUnit || 0);
-    
     return (
         <>
             <div className="flex flex-col lg:flex-row gap-6">
@@ -378,33 +437,136 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
                                     </InfoBox>
                                 </div>
 
-                                <h3 className="text-lg font-semibold mb-2">ประวัติความเคลื่อนไหว (Stock Card)</h3>
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3 no-print">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                                            ประวัติความเคลื่อนไหว (Stock Card)
+                                        </h3>
+                                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300">
+                                            {sortedAndFilteredTransactions.length} รายการ
+                                        </span>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {/* Sort order toggle */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                            className="px-3 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-all flex items-center gap-1.5 shadow-sm"
+                                        >
+                                            <span>{sortDirection === 'asc' ? '↑ อดีต → ปัจจุบัน (มาตรฐาน)' : '↓ ปัจจุบัน → อดีต'}</span>
+                                        </button>
+
+                                        {/* Type filter pills */}
+                                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 p-0.5 rounded-lg text-xs">
+                                            {[
+                                                { id: 'all', label: 'ทั้งหมด' },
+                                                { id: 'รับเข้า', label: 'รับเข้า' },
+                                                { id: 'เบิกจ่าย', label: 'เบิกจ่าย' },
+                                                { id: 'ปรับสต็อก', label: 'ปรับสต็อก' },
+                                                { id: 'ยืมสินค้า', label: 'ยืม' },
+                                            ].map(f => (
+                                                <button
+                                                    key={f.id}
+                                                    type="button"
+                                                    onClick={() => setTypeFilter(f.id)}
+                                                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                                                        typeFilter === f.id
+                                                            ? 'bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 font-bold shadow-xs'
+                                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                                    }`}
+                                                >
+                                                    {f.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <TableTemplate headers={['วันที่', 'ประเภท', 'อ้างอิง/หน่วยงาน', 'รับเข้า', 'จ่ายออก', 'คงเหลือ', '']}>
                                     {isLoading ? (
                                         <tr><td colSpan={7} className="text-center p-8">กำลังโหลดข้อมูล...</td></tr>
                                     ) : error ? (
                                         <tr><td colSpan={7} className="text-center p-8 text-red-600">{error}</td></tr>
                                     ) : sortedAndFilteredTransactions.length > 0 ? (
-                                        sortedAndFilteredTransactions.map((tx, index) => (
-                                            <tr key={index} className={tx.transactionType === 'ยอดยกมา' ? 'bg-slate-100 dark:bg-slate-700 font-semibold' : 'hover:bg-slate-50/70 dark:hover:bg-slate-700/50'}>
-                                                <td className="px-2 py-2 text-sm">{new Date(tx.transactionDate!).toLocaleDateString('th-TH')}</td>
-                                                <td className="px-2 py-2 text-sm">{tx.transactionType}</td>
-                                                <td className="px-2 py-2 text-sm truncate max-w-xs">{tx.departmentName || tx.referenceDocument}</td>
-                                                <td className={`px-2 py-2 text-sm text-right ${(tx.quantityIn || 0) > 0 ? 'text-green-600' : ''}`}>{(tx.quantityIn || 0) > 0 ? (tx.quantityIn || 0).toLocaleString() : '-'}</td>
-                                                <td className={`px-2 py-2 text-sm text-right ${(tx.quantityOut || 0) > 0 ? 'text-red-600' : ''}`}>{(tx.quantityOut || 0) > 0 ? (tx.quantityOut || 0).toLocaleString() : '-'}</td>
-                                                <td className="px-2 py-2 text-sm text-right font-semibold">{(tx.balance || 0).toLocaleString()}</td>
-                                                <td className="px-2 py-2 text-center">
-                                                    {tx.transactionType === 'รับเข้า' && tx.referenceDocument && tx.referenceDocument.startsWith('GRN') && (
-                                                        <button 
-                                                            onClick={() => handleOpenGrnModal(tx.referenceDocument!)}
-                                                            className="text-sky-600 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300 font-medium text-xs"
-                                                        >
-                                                            ดู/แก้ไข
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))
+                                        sortedAndFilteredTransactions.map((tx, index) => {
+                                            const isOpening = tx.transactionType === 'ยอดยกมา';
+                                            const isAdjustment = tx.transactionType === 'ปรับสต็อก' || tx.transactionType === 'ADJUSTMENT';
+                                            const isIssue = tx.transactionType === 'เบิกจ่าย' || tx.transactionType === 'ISSUE';
+                                            const isReceive = tx.transactionType === 'รับเข้า' || tx.transactionType === 'RECEIVE';
+                                            const isLatest = sortDirection === 'asc' 
+                                                ? index === sortedAndFilteredTransactions.length - 1 
+                                                : index === 0;
+
+                                            return (
+                                                <tr 
+                                                    key={index} 
+                                                    className={
+                                                        isOpening 
+                                                            ? 'bg-slate-100/80 dark:bg-slate-700/80 font-bold text-slate-800 dark:text-slate-200' 
+                                                            : isAdjustment 
+                                                            ? 'bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-50 dark:hover:bg-amber-950/40' 
+                                                            : 'hover:bg-slate-50/70 dark:hover:bg-slate-700/50'
+                                                    }
+                                                >
+                                                    <td className="px-2 py-2 text-sm whitespace-nowrap">
+                                                        {new Date(tx.transactionDate!).toLocaleDateString('th-TH')}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-sm">
+                                                        {isOpening ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100">
+                                                                ยอดยกมา
+                                                            </span>
+                                                        ) : isAdjustment ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                                                                ปรับสต็อก
+                                                            </span>
+                                                        ) : isIssue ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200">
+                                                                เบิกจ่าย
+                                                            </span>
+                                                        ) : isReceive ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200">
+                                                                รับเข้า
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                                                {tx.transactionType}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-sm truncate max-w-xs text-slate-700 dark:text-slate-300">
+                                                        {tx.departmentName || tx.referenceDocument}
+                                                    </td>
+                                                    <td className={`px-2 py-2 text-sm text-right font-medium ${(tx.quantityIn || 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                                        {(tx.quantityIn || 0) > 0 ? (tx.quantityIn || 0).toLocaleString() : '-'}
+                                                    </td>
+                                                    <td className={`px-2 py-2 text-sm text-right font-medium ${(tx.quantityOut || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
+                                                        {(tx.quantityOut || 0) > 0 ? (tx.quantityOut || 0).toLocaleString() : '-'}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-sm text-right font-bold text-slate-800 dark:text-slate-100">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <span>{(tx.balance || 0).toLocaleString()}</span>
+                                                            {isLatest && !isOpening && (
+                                                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 font-semibold no-print" title="ตรงกับยอดสต็อกปัจจุบันในคลัง">
+                                                                    ล่าสุด
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-center whitespace-nowrap">
+                                                        {tx.transactionType === 'รับเข้า' && tx.referenceDocument && tx.referenceDocument.startsWith('GRN') && (
+                                                            <button 
+                                                                onClick={() => handleOpenGrnModal(tx.referenceDocument!)}
+                                                                className="text-sky-600 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300 font-medium text-xs underline"
+                                                            >
+                                                                ดู/แก้ไข
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     ) : (
                                         <tr><td colSpan={7} className="text-center py-10 text-slate-500 dark:text-slate-400">ไม่พบประวัติการทำรายการในช่วงเวลานี้</td></tr>
                                     )}

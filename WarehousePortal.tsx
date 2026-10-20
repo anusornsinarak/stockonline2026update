@@ -247,48 +247,18 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
 
     const handleProcessRequisition = async (newItemsFromPicker: RequisitionItem[], editReason?: string | null) => {
         if (!requisitionForPickingView) return;
-
         setIsProcessing(requisitionForPickingView.id);
-        const originalItems = requisitionForPickingView.items || [];
-        const originalStatus = requisitionForPickingView.status;
 
-        const stockAdjustments: { productId: string, delta: number }[] = [];
-        const allProductIds = new Set([...originalItems.map(i => i.productId), ...newItemsFromPicker.map(i => i.productId)]);
-
-        for (const productId of allProductIds) {
-            const originalItem = originalItems.find(i => i.productId === productId);
-            const newItem = newItemsFromPicker.find(i => i.productId === productId);
-            
-            const oldApprovedQty = (originalStatus === 'Submitted' || originalStatus === 'Picking') ? 0 : (originalItem?.approvedQuantity ?? 0);
-            const newApprovedQty = newItem ? (newItem.approvedQuantity ?? 0) : 0;
-            
-            const delta = oldApprovedQty - newApprovedQty;
-
-            if (delta !== 0) stockAdjustments.push({ productId, delta });
-        }
-
-        const appliedAdjustments: { productId: string, delta: number }[] = [];
         try {
-            for (const adj of stockAdjustments) {
-                await supabaseService.adjustStockQuantity(adj.productId, adj.delta, `แก้ไขใบเบิก #${requisitionForPickingView.requisitionNumber}: ${editReason || 'อนุมัติ'}`);
-                appliedAdjustments.push(adj);
-            }
-
             await supabaseService.updateProcessedRequisitionItems(requisitionForPickingView.id, newItemsFromPicker, editReason || null);
             
             // เมื่อกดตัดสต็อกให้เป็น Ready (พร้อมจ่าย/อนุมัติแล้ว) เสมอ
             await supabaseService.updateRequisitionStatus(requisitionForPickingView.id, 'Ready');
             alert('อนุมัติและตัดสต็อกใบเบิกสำเร็จ');
             
+            await fetchData(true);
             handleClosePickingView();
         } catch (error: any) {
-            for (const applied of appliedAdjustments.reverse()) {
-                try {
-                    await supabaseService.adjustStockQuantity(applied.productId, -applied.delta, `ROLLBACK: แก้ไขใบเบิก #${requisitionForPickingView.requisitionNumber} ล้มเหลว`);
-                } catch (rollbackError) {
-                    console.error(`CRITICAL: Rollback failed!`, rollbackError);
-                }
-            }
             alert(`เกิดข้อผิดพลาด: ${error.message}`);
         } finally {
             setIsProcessing(null);
@@ -341,6 +311,7 @@ const WarehousePortal: React.FC<WarehousePortalProps> = ({ user, nextFiscalYearB
                     onClose={handleClosePickingView}
                     isPreview={isPickingPreview}
                     onItemsUpdated={() => fetchData(true)}
+                    onStockUpdated={() => fetchData(true)}
                     onProcessRequisitionWithStock={handleProcessRequisition}
                     onProcessSimple={handleSimpleApproval}
                     documentSettings={documentSettings}

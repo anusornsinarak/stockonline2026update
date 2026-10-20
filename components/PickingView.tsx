@@ -58,6 +58,32 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
     const [requisitionHistory, setRequisitionHistory] = useState<Requisition[]>([]);
     const draftSaveTimeout = useRef<number | null>(null);
 
+    // Real-time current stock map (Single Source of Truth)
+    const [liveInventoryMap, setLiveInventoryMap] = useState<Map<string, number>>(inventoryMap);
+
+    useEffect(() => {
+        setLiveInventoryMap(inventoryMap);
+    }, [inventoryMap]);
+
+    const refreshLiveStock = useCallback(async () => {
+        try {
+            const inv = await supabaseService.getInventory();
+            const map = new Map(inv.map(i => [i.productId, i.quantity]));
+            setLiveInventoryMap(map);
+        } catch (e) {
+            console.error("Failed to refresh live stock in PickingView:", e);
+        }
+    }, []);
+
+    useEffect(() => {
+        refreshLiveStock();
+        const handleRefresh = () => {
+            refreshLiveStock();
+        };
+        window.addEventListener('app-data-refresh', handleRefresh);
+        return () => window.removeEventListener('app-data-refresh', handleRefresh);
+    }, [refreshLiveStock]);
+
     useEffect(() => {
         const fetchExtraData = async () => {
             try {
@@ -252,6 +278,21 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
             await onProcessSimple(finalItems);
             safeRemoveStorage(`picking_draft_${requisition.id}`);
             
+            // Immediately update local live stock so UI reflects deducted balances
+            setLiveInventoryMap(prev => {
+                const next = new Map(prev);
+                finalItems.forEach(i => {
+                    if (['Approved', 'Picking', 'Ready', 'Completed'].includes(i.status) && (i.approvedQuantity || 0) > 0) {
+                        const cur: number = Number(next.get(i.productId)) || 0;
+                        const approved: number = Number(i.approvedQuantity) || 0;
+                        next.set(i.productId, Math.max(0, cur - approved));
+                    }
+                });
+                return next;
+            });
+            onStockUpdated?.();
+            onItemsUpdated();
+
             // Auto-trigger print after save success
             const itemsWithProduct = finalItems.map(item => ({
                 ...item,
@@ -358,7 +399,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
 
         items.forEach(item => {
             if (item.status === 'Rejected') return;
-            const stock = Math.max(0, inventoryMap.get(item.productId) ?? 0);
+            const stock = Math.max(0, liveInventoryMap.get(item.productId) ?? 0);
             const qtyToCheck = (item.approvedQuantity !== undefined && item.approvedQuantity !== null && item.approvedQuantity > 0)
                 ? item.approvedQuantity
                 : item.quantity;
@@ -398,7 +439,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
 
         items.forEach(item => {
             if (item.status === 'Rejected') return;
-            const stock = Math.max(0, inventoryMap.get(item.productId) ?? 0);
+            const stock = Math.max(0, liveInventoryMap.get(item.productId) ?? 0);
             const approvedQty = item.approvedQuantity || 0;
 
             if (approvedQty > stock) {
@@ -1092,7 +1133,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                                     const product = item.product || productMap.get(item.productId);
                                     if (!product) return null;
                                     const approvedQty = item.approvedQuantity || 0;
-                                    const stock = inventoryMap.get(item.productId) ?? 0;
+                                    const stock = liveInventoryMap.get(item.productId) ?? 0;
                                     // If Backordered, show no value
                                     const rowValue = item.status === 'Backordered' ? 0 : approvedQty * (item.pricePerUnit || 0);
 

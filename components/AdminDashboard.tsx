@@ -437,11 +437,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             onNavigateToReceipts={() => { setRequisitionForPicking(null); setActiveTab('receipts'); }}
             isPreview={isPickingPreview}
             onItemsUpdated={() => fetchData(true)}
+            onStockUpdated={() => fetchData(true)}
             onProcessSimple={async (items) => { 
               const allAreRejected = items.every(i => i.status === 'Rejected');
-              await supabaseService.saveSimpleApproval(requisitionForPicking.id, items, allAreRejected ? 'Rejected' : 'Picking'); 
+              await supabaseService.saveSimpleApproval(requisitionForPicking.id, items, allAreRejected ? 'Rejected' : 'Picking');
+              await fetchData(true);
             }}
-            onProcessRequisitionWithStock={async (items, reason) => { await supabaseService.updateProcessedRequisitionItems(requisitionForPicking.id, items, reason); }}
+            onProcessRequisitionWithStock={async (items, reason) => { 
+              await supabaseService.updateProcessedRequisitionItems(requisitionForPicking.id, items, reason);
+              await fetchData(true);
+            }}
             documentSettings={documentSettings}
             personnel={data.personnel}
           />

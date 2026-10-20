@@ -692,10 +692,8 @@ export const supabaseService = {
         }
         await this.notifyDepartmentStatusChange(reqId, status);
 
-        // FIX: The RPC might overwrite the original requested quantity with the approved quantity,
-        // or it might delete and recreate items (changing their IDs).
-        // We must ensure the original requested quantity is preserved using the data we fetched BEFORE the RPC.
-        // We update by requisition_id and product_id to be safe.
+        // Stock Issue Logic: Update inventory table (current_stock = current_stock - issued_qty)
+        const updatedStocks: Record<string, number> = {};
         for (const item of items) {
             const originalQty = originalQtyMap.has(item.productId) ? originalQtyMap.get(item.productId) : item.quantity;
             const { error: updErr } = await supabase.from('requisition_items').update({ 
@@ -707,6 +705,26 @@ export const supabaseService = {
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
             if (updErr) throw updErr;
+
+            // Deduct stock if item is approved for issue
+            const isApprovedNow = ['Approved', 'Picking', 'Ready', 'Completed'].includes(item.status);
+            const newApprovedQty = isApprovedNow ? (Number(item.approvedQuantity) || 0) : 0;
+            const origItem = originalItems?.find(oi => oi.product_id === item.productId);
+            const wasApprovedBefore = origItem && ['Approved', 'Picking', 'Ready', 'Completed'].includes(origItem.status);
+            const oldApprovedQty = wasApprovedBefore ? (Number(origItem.approved_quantity) || 0) : 0;
+            const netDeduct = newApprovedQty - oldApprovedQty;
+
+            if (netDeduct !== 0) {
+                const { data: curInv } = await supabase.from('inventory').select('quantity').eq('product_id', item.productId).maybeSingle();
+                const curStock = curInv ? Number(curInv.quantity) : 0;
+                const newStock = Math.max(0, curStock - netDeduct);
+                await supabase.from('inventory').upsert({
+                    product_id: item.productId,
+                    quantity: newStock,
+                    updated_at: new Date().toISOString()
+                });
+                updatedStocks[item.productId] = newStock;
+            }
         }
 
         await this.handleRejectReasonsAndLocks(reqId, items);
@@ -716,13 +734,21 @@ export const supabaseService = {
             message: `Requisition ${reqId} approved (Simple Approval).`
         });
         this.checkAndNotifyLowStock().catch(e => console.error("Low stock check error:", e));
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('app-data-refresh', { 
+                detail: { source: 'requisition-issue', reqId, updatedStocks } 
+            }));
+        }
+
+        return { success: true, updatedStocks };
     },
 
     async updateProcessedRequisitionItems(reqId: string, items: RequisitionItem[], editReason: string | null) {
-        // Fetch original items to preserve the requested quantity
+        // Fetch original items to preserve the requested quantity and track approval delta
         const { data: originalItems } = await supabase
             .from('requisition_items')
-            .select('id, quantity, product_id')
+            .select('id, quantity, approved_quantity, status, product_id')
             .eq('requisition_id', reqId);
         
         const originalQtyMap = new Map(originalItems?.map(i => [i.product_id, i.quantity]) || []);
@@ -756,6 +782,8 @@ export const supabaseService = {
         // or it might delete and recreate items (changing their IDs).
         // We must ensure the original requested quantity is preserved using the data we fetched BEFORE the RPC.
         // We update by requisition_id and product_id to be safe.
+        // Stock Issue Logic: Update inventory table (current_stock = current_stock - issued_qty)
+        const updatedStocks: Record<string, number> = {};
         for (const item of items) {
             const originalQty = originalQtyMap.has(item.productId) ? originalQtyMap.get(item.productId) : item.quantity;
             const { error: updErr } = await supabase.from('requisition_items').update({ 
@@ -767,6 +795,26 @@ export const supabaseService = {
             .eq('requisition_id', reqId)
             .eq('product_id', item.productId);
             if (updErr) throw updErr;
+
+            // Deduct stock if item is approved for issue
+            const isApprovedNow = ['Approved', 'Picking', 'Ready', 'Completed'].includes(item.status);
+            const newApprovedQty = isApprovedNow ? (Number(item.approvedQuantity) || 0) : 0;
+            const origItem = originalItems?.find(oi => oi.product_id === item.productId);
+            const wasApprovedBefore = origItem && ['Approved', 'Picking', 'Ready', 'Completed'].includes(origItem.status);
+            const oldApprovedQty = wasApprovedBefore ? (Number(origItem.approved_quantity) || 0) : 0;
+            const netDeduct = newApprovedQty - oldApprovedQty;
+
+            if (netDeduct !== 0) {
+                const { data: curInv } = await supabase.from('inventory').select('quantity').eq('product_id', item.productId).maybeSingle();
+                const curStock = curInv ? Number(curInv.quantity) : 0;
+                const newStock = Math.max(0, curStock - netDeduct);
+                await supabase.from('inventory').upsert({
+                    product_id: item.productId,
+                    quantity: newStock,
+                    updated_at: new Date().toISOString()
+                });
+                updatedStocks[item.productId] = newStock;
+            }
         }
 
         await this.handleRejectReasonsAndLocks(reqId, items);
@@ -776,6 +824,14 @@ export const supabaseService = {
             message: `Requisition ${reqId} processed with reason: ${editReason || 'None'}.`
         });
         this.checkAndNotifyLowStock().catch(e => console.error("Low stock check error:", e));
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('app-data-refresh', { 
+                detail: { source: 'requisition-issue', reqId, updatedStocks } 
+            }));
+        }
+
+        return { success: true, updatedStocks };
     },
 
     async handleRejectReasonsAndLocks(reqId: string, items: RequisitionItem[]) {
@@ -875,17 +931,28 @@ export const supabaseService = {
         }
     },
 
-    async adjustStockQuantity(productId: string, delta: number, notes: string) {
-        if (delta === 0) return;
+    async adjustStockQuantity(productId: string, delta: number, notes: string, targetQuantity?: number) {
+        if (delta === 0) return { success: true, delta: 0 };
 
-        // Instead of directly updating stock which doesn't leave a paper trail in the stock card,
-        // we create an 'Other' GRN for the adjustment and automatically approve it.
-        // This will correctly log a 'receive' (or negative receive for issue) transaction in the stock card view.
-        
+        // 1. Get current stock directly from inventory table (Single Source of Truth)
+        const { data: invData } = await supabase.from('inventory').select('quantity').eq('product_id', productId).maybeSingle();
+        const currentQty = invData ? Number(invData.quantity) : 0;
+        const newTargetStock = targetQuantity !== undefined ? targetQuantity : (currentQty + delta);
+
+        // 2. Immediately update current_stock in inventory table
+        const { error: invErr } = await supabase.from('inventory').upsert({
+            product_id: productId,
+            quantity: newTargetStock,
+            updated_at: new Date().toISOString()
+        });
+        if (invErr) throw invErr;
+
+        // 3. Create Stock Card transaction row via goods_received_notes with status 'Completed'
         const { data: newGrn, error } = await supabase.from('goods_received_notes').insert({
             source_type: 'Other',
-            notes: `[ปรับปรุงยอดจากระบบ] ${notes}`,
-            status: 'Pending Approval'
+            notes: `[ปรับสต็อก] ${notes}`,
+            status: 'Completed',
+            received_date: new Date().toISOString()
         }).select().single();
 
         if (error) throw error;
@@ -900,16 +967,24 @@ export const supabaseService = {
 
         if (itemsError) throw itemsError;
 
-        await this.approveGoodsReceivedNote(newGrn.id);
-
         await this.logSystemEvent({
             level: 'INFO',
             event: 'STOCK_ADJUSTED',
-            message: `Stock for product ${productId} adjusted by ${delta}. GRN: ${newGrn?.id || 'fallback'}`
+            message: `Stock for product ${productId} adjusted by delta ${delta} to ${newTargetStock}. GRN: ${newGrn?.id || 'manual'}`
         });
+
         if (delta < 0) {
             this.checkAndNotifyLowStock().catch(e => console.error("Low stock check error:", e));
         }
+
+        // Trigger real-time background refresh
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('app-data-refresh', { 
+                detail: { source: 'stock-adjustment', productId, newStock: newTargetStock, delta } 
+            }));
+        }
+
+        return { success: true, newStock: newTargetStock, delta };
     },
 
     async getProductTransactionHistory(productId: string, endDate: string): Promise<ProductTransaction[]> {
@@ -919,11 +994,38 @@ export const supabaseService = {
         const { data, error } = await supabase.rpc('get_product_transactions', { p_product_id: productId, p_end_date: endDateTime });
         if (error) throw error;
         
-        const txs: ProductTransaction[] = (data as any[] || []).map(t => ({
-            transactionDate: new Date(t.transaction_date), transactionType: t.transaction_type,
-            referenceDocument: t.reference_document, departmentName: t.department_name,
-            quantityIn: t.quantity_in, quantityOut: t.quantity_out, balance: t.balance
-        }));
+        const txs: ProductTransaction[] = (data as any[] || []).map(t => {
+            let txType = t.transaction_type;
+            let qIn = Number(t.quantity_in) || 0;
+            let qOut = Number(t.quantity_out) || 0;
+
+            // Check if this transaction is an adjustment
+            const deptName = t.department_name || '';
+            const refDoc = t.reference_document || '';
+            if (deptName.includes('ปรับปรุงยอด') || deptName.includes('ปรับสต็อก') || refDoc.includes('ADJUST')) {
+                txType = 'ปรับสต็อก';
+            }
+
+            // Normalize negative values
+            if (qIn < 0) {
+                qOut += Math.abs(qIn);
+                qIn = 0;
+            }
+            if (qOut < 0) {
+                qIn += Math.abs(qOut);
+                qOut = 0;
+            }
+
+            return {
+                transactionDate: new Date(t.transaction_date), 
+                transactionType: txType,
+                referenceDocument: t.reference_document, 
+                departmentName: t.department_name,
+                quantityIn: qIn, 
+                quantityOut: qOut, 
+                balance: t.balance
+            };
+        });
 
         // Fetch Requisition Items to override quantityOut with approved_quantity
         let reqItems: any[] = [];
@@ -971,7 +1073,7 @@ export const supabaseService = {
             });
         }
 
-        // Fetch GRNs that might be excluded by the RPC (e.g. 'Other' source_type without a PO)
+        // Fetch GRNs that might be excluded by the RPC (e.g. 'Other' source_type without a PO or newly created adjustments)
         const { data: additionalGrns } = await supabase.from('goods_received_notes')
             .select('id, grn_number, received_date, source_type, notes, goods_received_items!inner(product_id, quantity_received)')
             .eq('status', 'Completed')
@@ -987,11 +1089,14 @@ export const supabaseService = {
                 const item = grn.goods_received_items.find((i: any) => i.product_id === productId);
                 if (item && item.quantity_received !== 0) {
                     const qty = item.quantity_received;
+                    const isAdjustment = grn.source_type === 'Other' || (grn.notes && (grn.notes.includes('ปรับสต็อก') || grn.notes.includes('ปรับปรุงยอด')));
+                    const txType = isAdjustment ? 'ปรับสต็อก' : (grn.source_type === 'Return' ? 'รับคืน' : 'รับเข้า');
+
                     txs.push({
                         transactionDate: new Date(grn.received_date),
-                        transactionType: grn.source_type === 'Return' ? 'รับคืน' : 'รับเข้า',
+                        transactionType: txType,
                         referenceDocument: grn.grn_number || grn.id,
-                        departmentName: grn.notes || 'ปรับปรุงยอดจากระบบ',
+                        departmentName: grn.notes || (isAdjustment ? 'ปรับสต็อก' : 'ปรับปรุงยอดจากระบบ'),
                         quantityIn: qty > 0 ? qty : 0,
                         quantityOut: qty < 0 ? Math.abs(qty) : 0,
                         balance: 0 // Will be recalculated by the frontend

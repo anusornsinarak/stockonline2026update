@@ -84,7 +84,7 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({ isOpen, onC
         setError('');
 
         try {
-            await supabaseService.adjustStockQuantity(product.id, finalQuantityChange, notes);
+            await supabaseService.adjustStockQuantity(product.id, finalQuantityChange, notes, newStock);
             alert('ปรับสต็อกสำเร็จ!');
             onSuccess();
         } catch (err) {
