@@ -7,7 +7,7 @@ import TrashIcon from '../icons/TrashIcon';
 import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
 import ShoppingCartIcon from '../icons/ShoppingCartIcon';
 import SignaturePadModal from '../SignaturePadModal';
-import { safeGetStorage, safeSetStorage, safeRemoveStorage } from '../../utils';
+import { safeGetStorage, safeSetStorage, safeRemoveStorage, getDefaultRequisitionPeriod, getRequisitionPeriodOptions, THAI_MONTH_NAMES } from '../../utils';
 
 interface AutomatedRequisitionFormProps {
     department: Department;
@@ -38,11 +38,17 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
     const [requesterPosition, setRequesterPosition] = useState('');
     const [catalogSearchTerm, setCatalogSearchTerm] = useState('');
     const [urgentReason, setUrgentReason] = useState('');
+    const [documentRefNo, setDocumentRefNo] = useState(initialRequisition?.documentRefNo || '');
+    const [requisitionPeriod, setRequisitionPeriod] = useState(initialRequisition?.requisitionPeriod || getDefaultRequisitionPeriod());
     const [showSurveyItems, setShowSurveyItems] = useState(false);
     const [isCartHidden, setIsCartHidden] = useState(false);
     const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
     const [isSubmittingWithSignature, setIsSubmittingWithSignature] = useState(false);
     const [localSignatureUrl, setLocalSignatureUrl] = useState<string | null | undefined>(undefined);
+
+    const isInitializedRef = useRef(false);
+    const lastLoadedReqIdRef = useRef<string | null>(initialRequisition?.id || null);
+    const periodOptions = useMemo(() => getRequisitionPeriodOptions(), []);
 
     const getSignature = () => {
         if (localSignatureUrl !== undefined) return localSignatureUrl;
@@ -138,6 +144,8 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                     requesterPosition,
                     type,
                     urgentReason,
+                    documentRefNo,
+                    requisitionPeriod,
                     createdAt: initialRequisition?.createdAt || new Date(),
                 };
                 try {
@@ -157,7 +165,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                 clearTimeout(draftSaveTimeout.current);
             }
         };
-    }, [items, name, requesterName, requesterPosition, urgentReason, department.id, isSaving, initialRequisition, type]);
+    }, [items, name, requesterName, requesterPosition, urgentReason, documentRefNo, requisitionPeriod, department.id, isSaving, initialRequisition, type]);
 
 
     useEffect(() => {
@@ -170,31 +178,62 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
     }, []);
 
     useEffect(() => {
+        // Prevent clearing or resetting user's entered form data when background data updates occur
+        const currentReqId = initialRequisition?.id || null;
+        if (isInitializedRef.current && currentReqId === lastLoadedReqIdRef.current) {
+            return;
+        }
+
+        isInitializedRef.current = true;
+        lastLoadedReqIdRef.current = currentReqId;
         setLocalSignatureUrl(undefined);
+
         if (initialRequisition) { 
             setName(initialRequisition.name || '');
             setItems(initialRequisition.items || []);
             setRequesterName(initialRequisition.requesterName || '');
             setRequesterPosition(initialRequisition.requesterPosition || '');
             setUrgentReason(initialRequisition.urgentReason || '');
+            setDocumentRefNo(initialRequisition.documentRefNo || '');
+            setRequisitionPeriod(initialRequisition.requisitionPeriod || getDefaultRequisitionPeriod(initialRequisition.createdAt));
         } else { 
+            // Check if there is an unsaved draft in localStorage
+            const savedDraft = safeGetStorage(`unsavedRequisition_${department.id}`);
+            if (savedDraft) {
+                try {
+                    const parsed = JSON.parse(savedDraft);
+                    if (parsed && (parsed.items?.length > 0 || parsed.name)) {
+                        setName(parsed.name || '');
+                        setItems(parsed.items || []);
+                        setRequesterName(parsed.requesterName || '');
+                        setRequesterPosition(parsed.requesterPosition || '');
+                        setUrgentReason(parsed.urgentReason || '');
+                        setDocumentRefNo(parsed.documentRefNo || '');
+                        setRequisitionPeriod(parsed.requisitionPeriod || getDefaultRequisitionPeriod());
+                        return;
+                    }
+                } catch (e) {}
+            }
+
             const now = new Date();
-            const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            const defaultPeriod = getDefaultRequisitionPeriod(now);
             const defaultName = requiresReason 
-                ? `ใบเบิก${type === 'Urgent' ? 'ด่วน' : 'นอกรอบ'} ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear() + 543}`
-                : `ใบเบิก ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear() + 543}`;
+                ? `ใบเบิก${type === 'Urgent' ? 'ด่วน' : 'นอกรอบ'} ${now.getDate()} ${THAI_MONTH_NAMES[now.getMonth()]} ${now.getFullYear() + 543}`
+                : `ใบเบิก ${now.getDate()} ${THAI_MONTH_NAMES[now.getMonth()]} ${now.getFullYear() + 543}`;
             setName(defaultName);
+            setRequisitionPeriod(defaultPeriod);
+            setDocumentRefNo('');
 
             const savedRequester = safeGetStorage(`requesterInfo-${department.id}`);
             if (savedRequester) {
                 try {
-                    const { name, position } = JSON.parse(savedRequester);
-                    setRequesterName(name || '');
-                    const person = personnel.find(p => p.name === name);
+                    const { name: sName, position: sPos } = JSON.parse(savedRequester);
+                    setRequesterName(sName || '');
+                    const person = personnel.find(p => p.name === sName);
                     if (person) {
                         setRequesterPosition(person.position);
                     } else {
-                        setRequesterPosition(position || '');
+                        setRequesterPosition(sPos || '');
                     }
                 } catch (e) {
                     setRequesterName('');
@@ -208,7 +247,7 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
             setItems([]); 
             setUrgentReason('');
         }
-    }, [initialRequisition, department.id, requiresReason, personnel]);
+    }, [initialRequisition?.id, department.id]);
 
     const handleAddItem = (product: Product) => {
         setIsCartHidden(false);
@@ -249,6 +288,11 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
 
         if (!name.trim() || (status === 'Submitted' && (!requesterName.trim() || !requesterPosition.trim()))) {
             setError('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน');
+            return;
+        }
+
+        if (status === 'Submitted' && (!requisitionPeriod || !requisitionPeriod.trim())) {
+            setError('กรุณาเลือกรอบเดือนที่เบิก (จำเป็น)');
             return;
         }
 
@@ -326,6 +370,8 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                 status,
                 type: type,
                 urgentReason: requiresReason ? urgentReason.trim() : undefined,
+                documentRefNo: documentRefNo.trim() || null,
+                requisitionPeriod: requisitionPeriod.trim(),
                 submittedAt: status === 'Submitted' ? new Date() : null,
                 requesterName: requesterName.trim() || null,
                 requesterPosition: requesterPosition.trim() || null,
@@ -654,6 +700,35 @@ const AutomatedRequisitionForm: React.FC<AutomatedRequisitionFormProps> = ({ dep
                                 <datalist id="position-list">
                                     {uniquePositions.map((pos, idx) => <option key={idx} value={pos} />)}
                                 </datalist>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                                    รอบเดือนที่เบิก <span className="text-red-500 font-bold">*</span>
+                                </label>
+                                <select 
+                                    value={requisitionPeriod} 
+                                    onChange={e => setRequisitionPeriod(e.target.value)} 
+                                    required
+                                    className="mt-1 w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg text-sm font-medium focus:ring-sky-500 focus:border-sky-500"
+                                >
+                                    {periodOptions.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                                    เลขที่หนังสืออ้างอิง/เลขที่หนังสือเบิก <span className="text-xs text-slate-400 font-normal">(ไม่บังคับ)</span>
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={documentRefNo} 
+                                    onChange={e => setDocumentRefNo(e.target.value)} 
+                                    placeholder="เช่น สธ 0032.001/123"
+                                    className="mt-1 w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg text-sm"
+                                />
                             </div>
                         </div>
                         {requiresReason && (

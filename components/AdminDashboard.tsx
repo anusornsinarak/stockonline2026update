@@ -246,6 +246,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       return () => window.removeEventListener('app-data-refresh', handleBackgroundRefresh);
   }, [fetchData]);
 
+  const handleStockDataChange = useCallback(() => {
+      fetchData(true);
+  }, [fetchData]);
+
   useEffect(() => {
     if (initialTab) {
         const tab = typeof initialTab === 'string' ? initialTab : initialTab.tab;
@@ -406,7 +410,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
           case 'loanQRCode': return <LoanQRCodeView />;
           case 'purchaseOrder': return <PurchaseOrderView user={user} onDataChange={() => fetchData(true)} purchaseOrders={data.purchaseOrders || []} companies={data.companies || []} productSuppliers={data.productSuppliers || []} allProducts={data.products} purchasePlan={data.purchasePlan} viewFiscalYear={viewFiscalYear} inventory={data.inventory} documentSettings={documentSettings} onAddProduct={() => {}} onAddCompany={() => {}} />;
           case 'receipts': return <GoodsReceivingView user={user} allProducts={data.products} onDataChange={() => fetchData(true)} />;
-          case 'stockCard': return <StockCardView allProducts={data.products} inventory={data.inventory} goodsReceivedNotes={data.goodsReceivedNotes} purchaseOrders={data.purchaseOrders || []} companies={data.companies || []} onDataChange={() => fetchData(true)} />;
+          case 'stockCard': return <StockCardView allProducts={data.products} inventory={data.inventory} goodsReceivedNotes={data.goodsReceivedNotes} purchaseOrders={data.purchaseOrders || []} companies={data.companies || []} onDataChange={handleStockDataChange} />;
           case 'expiringStock': return <ExpiringStockView expiringStock={data.expiringStock} />;
           case 'manageItems': return <ManageItemsView products={data.products} companies={data.companies || []} productSuppliers={data.productSuppliers || []} inventory={data.inventory} onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }} onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }} onImportProducts={() => {}} onPrintLabels={() => {}} onCompanyAdded={() => fetchData(true)} onCompanyUpdated={() => fetchData(true)} onCompanyDeleted={() => fetchData(true)} onProductSuppliersUpdated={() => fetchData(true)} onProductDeleted={() => fetchData(true)} />;
           case 'manageStockLevels': return <ManageStockLevelsView products={data.products} purchasePlan={data.purchasePlan} inventory={data.inventory} onSave={() => fetchData(true)} companies={data.companies || []} productSuppliers={data.productSuppliers || []} onSwitchToTab={(t) => setActiveTab(t)} />;

@@ -8,7 +8,7 @@ const supabase = supabaseClient as any;
 import * as XLSX from 'xlsx';
 import { User, Product, Department, AppNotification, SurveyEntry, Company, ProductSupplier, Requisition, RequisitionStatus, requisitionStatusMap, RequisitionItem, PurchaseOrder, GoodsReceivedNote, SystemLog, InventoryItem, DocumentSettings, Personnel, BackOrderItem, LoanItem, ProductUsageHistory, ProductCategory, P2PExchangePosting, PublicProductInfo, DepartmentInventoryLot, DepartmentInventoryItem, ProductIssue, POStatus, ProductIssueStatus, PurchasePlanItem, ExpiringStockItem, DepartmentProductUsage, ProductTransaction, PublicChatMessage, LineUserProfile, LoanTransaction, LoanTransactionItem, SurveyConfig, SurveyQuestion, SurveyResponse } from '../types';
 import type { Json } from '../database.types';
-import { getThaiYearMonthPrefix, formatRunningNumber } from '../utils';
+import { getThaiYearMonthPrefix, formatRunningNumber, encodeRequisitionMeta, decodeRequisitionMeta, getDefaultRequisitionPeriod } from '../utils';
 
 // Helper to get GAS URL
 const getGasUrl = async () => {
@@ -297,43 +297,70 @@ export const supabaseService = {
     // Requisitions
     async getRequisitionsForAdmin(): Promise<Requisition[]> {
         const { data } = await supabase.from('requisitions').select('*, requisition_items(*, products(name, unit, price_per_unit, zone))').order('created_at', { ascending: false });
-        return (data || []).map(r => ({
-            id: r.id, requisitionNumber: r.requisition_number, departmentId: r.department_id, name: r.name,
-            status: r.status as any, type: r.type as any, urgentReason: r.urgent_reason, createdAt: new Date(r.created_at),
-            submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
-            approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
-            requesterName: r.requester_name,
-            requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position,
-            receiverName: r.receiver_name,
-            rejectionReason: r.rejection_reason,
-            items: ((r as any).requisition_items || []).map((i: any) => ({
-                id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
-                pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
-                departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
-                rejectReason: i.reject_reason,
-                product: i.products ? { id: i.product_id, name: i.products.name, unit: i.products.unit, pricePerUnit: i.products.price_per_unit, zone: i.products.zone } : undefined
-            }))
-        } as Requisition));
+        return (data || []).map(r => {
+            const decoded = decodeRequisitionMeta((r as any).urgent_reason, (r as any).name, r.created_at);
+            return {
+                id: r.id, 
+                requisitionNumber: r.requisition_number, 
+                departmentId: r.department_id, 
+                name: r.name,
+                status: r.status as any, 
+                type: r.type as any, 
+                urgentReason: decoded.cleanReason,
+                documentRefNo: (r as any).document_ref_no || decoded.documentRefNo || null,
+                requisitionPeriod: (r as any).requisition_period || decoded.requisitionPeriod,
+                createdAt: new Date(r.created_at),
+                submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
+                approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
+                requesterName: r.requester_name,
+                requesterPosition: r.requester_position, 
+                approverName: r.approver_name, 
+                approverPosition: r.approver_position,
+                receiverName: r.receiver_name,
+                rejectionReason: r.rejection_reason,
+                items: ((r as any).requisition_items || []).map((i: any) => ({
+                    id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
+                    pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
+                    departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
+                    rejectReason: i.reject_reason,
+                    product: i.products ? { id: i.product_id, name: i.products.name, unit: i.products.unit, pricePerUnit: i.products.price_per_unit, zone: i.products.zone } : undefined
+                }))
+            } as Requisition;
+        });
     },
 
     async getRequisitionsForDepartment(deptId: string): Promise<Requisition[]> {
         const { data } = await supabase.from('requisitions').select('*, requisition_items(*, products(name, unit, price_per_unit))').eq('department_id', deptId).order('created_at', { ascending: false });
-        return (data || []).map(r => ({
-            id: r.id, requisitionNumber: r.requisition_number, departmentId: r.department_id, name: r.name,
-            status: r.status as any, type: r.type as any, urgentReason: r.urgent_reason, createdAt: new Date(r.created_at),
-            submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
-            approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
-            requesterName: r.requester_name,
-            requesterPosition: r.requester_position, approverName: r.approver_name, approverPosition: r.approver_position, receiverName: r.receiver_name,
-            rejectionReason: r.rejection_reason,
-            items: ((r as any).requisition_items || []).map((i: any) => ({
-                id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
-                pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
-                departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
-                rejectReason: i.reject_reason,
-                product: i.products ? { id: i.product_id, name: i.products.name, unit: i.products.unit, pricePerUnit: i.products.price_per_unit } : undefined
-            }))
-        } as Requisition));
+        return (data || []).map(r => {
+            const decoded = decodeRequisitionMeta((r as any).urgent_reason, (r as any).name, r.created_at);
+            return {
+                id: r.id, 
+                requisitionNumber: r.requisition_number, 
+                departmentId: r.department_id, 
+                name: r.name,
+                status: r.status as any, 
+                type: r.type as any, 
+                urgentReason: decoded.cleanReason,
+                documentRefNo: (r as any).document_ref_no || decoded.documentRefNo || null,
+                requisitionPeriod: (r as any).requisition_period || decoded.requisitionPeriod,
+                createdAt: new Date(r.created_at),
+                submittedAt: r.submitted_at ? new Date(r.submitted_at) : null,
+                approvedAt: (r as any).approved_at ? new Date((r as any).approved_at) : null,
+                requesterName: r.requester_name,
+                requesterPosition: r.requester_position, 
+                approverName: r.approver_name, 
+                approverPosition: r.approver_position, 
+                receiverName: r.receiver_name,
+                rejectionReason: r.rejection_reason,
+                items: ((r as any).requisition_items || []).map((i: any) => ({
+                    id: i.id, requisitionId: i.requisition_id, productId: i.product_id, quantity: i.quantity,
+                    pricePerUnit: i.price_per_unit, approvedQuantity: i.approved_quantity, status: i.status as any,
+                    departmentStockOnSubmit: i.department_stock_on_submit, returnedQuantity: i.returned_quantity,
+                    rejectReason: i.reject_reason,
+                    product: i.products ? { id: i.product_id, name: i.products.name, unit: i.products.unit, pricePerUnit: i.products.price_per_unit } : undefined
+                }))
+            } as Requisition;
+        });
     },
 
     async deleteRequisition(id: string) {
@@ -442,16 +469,20 @@ export const supabaseService = {
             requisitionNumber = await this.getNextRequisitionNumber(new Date());
         }
 
-        const requisitionData = {
+        const encodedUrgentReason = encodeRequisitionMeta(req.urgentReason, req.documentRefNo, req.requisitionPeriod);
+
+        const requisitionData: any = {
             department_id: req.departmentId, 
             name: req.name, 
             status: req.status, 
             type: req.type,
-            urgent_reason: req.urgentReason, 
+            urgent_reason: encodedUrgentReason, 
             submitted_at: req.submittedAt ? req.submittedAt.toISOString() : (isSubmitting ? new Date().toISOString() : null),
             requester_name: req.requesterName, 
             requester_position: req.requesterPosition,
-            requisition_number: requisitionNumber
+            requisition_number: requisitionNumber,
+            document_ref_no: req.documentRefNo || null,
+            requisition_period: req.requisitionPeriod || null
         };
 
         if (!isNew) {
@@ -461,11 +492,23 @@ export const supabaseService = {
                 throw new Error('ไม่สามารถแก้ไขใบเบิกนี้ได้เนื่องจากสถานะถูกเปลี่ยนแปลงไปแล้ว (อาจกำลังดำเนินการหรืออนุมัติแล้ว)');
             }
             
-            await supabase.from('requisitions').update(requisitionData as any).eq('id', reqId!);
+            const { error: updateErr } = await supabase.from('requisitions').update(requisitionData as any).eq('id', reqId!);
+            if (updateErr && (updateErr.code === '42703' || updateErr.message?.includes('column'))) {
+                // DB does not yet have document_ref_no or requisition_period columns, fallback to payload without them
+                const { document_ref_no, requisition_period, ...fallbackData } = requisitionData;
+                const { error: fallbackErr } = await supabase.from('requisitions').update(fallbackData as any).eq('id', reqId!);
+                if (fallbackErr) throw fallbackErr;
+            } else if (updateErr) {
+                throw updateErr;
+            }
         } else {
-            const { data, error } = await supabase.from('requisitions').insert(requisitionData as any).select().single();
-            if (error) throw error;
-            reqId = data.id;
+            let insertRes = await supabase.from('requisitions').insert(requisitionData as any).select().single();
+            if (insertRes.error && (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))) {
+                const { document_ref_no, requisition_period, ...fallbackData } = requisitionData;
+                insertRes = await supabase.from('requisitions').insert(fallbackData as any).select().single();
+            }
+            if (insertRes.error) throw insertRes.error;
+            reqId = insertRes.data.id;
         }
 
         // Fetch existing items to determine what to delete and what to update
@@ -991,121 +1034,176 @@ export const supabaseService = {
         // Ensure endDate includes the full day
         const endDateTime = endDate.includes('T') ? endDate : `${endDate}T23:59:59.999Z`;
 
-        const { data, error } = await supabase.rpc('get_product_transactions', { p_product_id: productId, p_end_date: endDateTime });
-        if (error) throw error;
+        // 1. Query directly from product_transactions view (Single Source of Truth)
+        let rawTxs: any[] = [];
+        const { data: viewData, error: viewErr } = await supabase
+            .from('product_transactions')
+            .select('*')
+            .eq('product_id', productId)
+            .lte('transaction_date', endDateTime)
+            .order('transaction_date', { ascending: true });
+
+        if (!viewErr && viewData && viewData.length > 0) {
+            rawTxs = viewData;
+        } else {
+            // Fallback to RPC if view is empty or unavailable
+            try {
+                const { data: rpcData } = await supabase.rpc('get_product_transactions', { p_product_id: productId, p_end_date: endDateTime });
+                if (rpcData && (rpcData as any[]).length > 0) {
+                    rawTxs = rpcData as any[];
+                }
+            } catch (e) {
+                console.warn('RPC fallback error in getProductTransactionHistory:', e);
+            }
+        }
         
-        const txs: ProductTransaction[] = (data as any[] || []).map(t => {
-            let txType = t.transaction_type;
+        const txs: ProductTransaction[] = (rawTxs || []).map(t => {
+            let txType = t.transaction_type || '';
             let qIn = Number(t.quantity_in) || 0;
             let qOut = Number(t.quantity_out) || 0;
-
-            // Check if this transaction is an adjustment
-            const deptName = t.department_name || '';
+            let deptName = t.department_name || '';
             const refDoc = t.reference_document || '';
-            if (deptName.includes('ปรับปรุงยอด') || deptName.includes('ปรับสต็อก') || refDoc.includes('ADJUST')) {
-                txType = 'ปรับสต็อก';
-            }
 
-            // Normalize negative values
-            if (qIn < 0) {
-                qOut += Math.abs(qIn);
-                qIn = 0;
-            }
-            if (qOut < 0) {
-                qIn += Math.abs(qOut);
-                qOut = 0;
+            // 1. Identify Stock Adjustment
+            const isAdjustment = txType === 'ปรับสต็อก' || 
+                                 txType === 'ADJUSTMENT' || 
+                                 deptName.includes('ปรับสต็อก') || 
+                                 deptName.includes('ปรับปรุงยอด') || 
+                                 refDoc.includes('ADJUST') ||
+                                 qIn < 0 || qOut < 0;
+
+            // 2. Identify Loan
+            const isLoan = txType === 'ยืมสินค้า' || 
+                           txType === 'LOAN' || 
+                           txType === 'กำลังยืม' ||
+                           refDoc.startsWith('LOAN') || 
+                           deptName.includes('ขอยืม') ||
+                           deptName.includes('ยืม');
+
+            if (isAdjustment) {
+                txType = 'ปรับสต็อก';
+                if (qIn < 0) {
+                    qOut = Math.abs(qIn);
+                    qIn = 0;
+                    if (!deptName) deptName = 'ปรับลดสต็อก';
+                } else if (qOut < 0) {
+                    qIn = Math.abs(qOut);
+                    qOut = 0;
+                    if (!deptName) deptName = 'ปรับเพิ่มสต็อก';
+                } else if (qIn > 0 && qOut === 0) {
+                    if (!deptName) deptName = 'ปรับเพิ่มสต็อก';
+                } else if (qOut > 0 && qIn === 0) {
+                    if (!deptName) deptName = 'ปรับลดสต็อก';
+                }
+            } else if (isLoan) {
+                txType = 'ยืมสินค้า';
+                if (qOut === 0 && qIn > 0) {
+                    qOut = qIn;
+                    qIn = 0;
+                }
+            } else if (txType === 'เบิกจ่าย' || txType === 'ISSUE') {
+                txType = 'เบิกจ่าย';
+                // Critical issue #2: Missing Issue Quantity - ensure qOut is never 0/null/undefined if qIn had the value
+                if (qOut === 0 && qIn > 0) {
+                    qOut = qIn;
+                    qIn = 0;
+                }
+            } else if (txType === 'รับเข้า' || txType === 'RECEIVE') {
+                txType = 'รับเข้า';
+                if (qIn === 0 && qOut > 0) {
+                    qIn = qOut;
+                    qOut = 0;
+                }
+            } else if (txType === 'รับคืน' || txType === 'RETURN') {
+                txType = 'รับคืน';
+                if (qIn === 0 && qOut > 0) {
+                    qIn = qOut;
+                    qOut = 0;
+                }
             }
 
             return {
                 transactionDate: new Date(t.transaction_date), 
                 transactionType: txType,
-                referenceDocument: t.reference_document, 
-                departmentName: t.department_name,
+                referenceDocument: refDoc, 
+                departmentName: deptName,
                 quantityIn: qIn, 
                 quantityOut: qOut, 
-                balance: t.balance
+                balance: Number(t.balance) || 0
             };
         });
 
-        // Fetch Requisition Items to override quantityOut with approved_quantity
-        let reqItems: any[] = [];
-        let reqPage = 0;
-        let reqHasMore = true;
-        const reqPageSize = 1000;
-
-        while (reqHasMore) {
-            const { data } = await supabase.from('requisition_items')
+        // 3. Fetch Requisition Items to override quantityOut with approved_quantity if necessary
+        try {
+            const { data: reqItems } = await supabase.from('requisition_items')
                 .select(`
                     product_id,
                     approved_quantity,
                     requisitions!inner(requisition_number)
                 `)
                 .eq('product_id', productId)
-                .range(reqPage * reqPageSize, (reqPage + 1) * reqPageSize - 1);
+                .limit(1000);
             
-            if (data && data.length > 0) {
-                reqItems = reqItems.concat(data);
-                if (data.length < reqPageSize) {
-                    reqHasMore = false;
-                } else {
-                    reqPage++;
-                }
-            } else {
-                reqHasMore = false;
+            if (reqItems && reqItems.length > 0) {
+                const reqMap = new Map<string, number>();
+                reqItems.forEach((item: any) => {
+                    if (item.requisitions?.requisition_number && item.product_id && item.approved_quantity !== null && item.approved_quantity !== undefined) {
+                        reqMap.set(`${item.requisitions.requisition_number}_${item.product_id}`, Number(item.approved_quantity));
+                    }
+                });
+
+                txs.forEach(tx => {
+                    if (tx.transactionType === 'เบิกจ่าย' && tx.referenceDocument) {
+                        const reqKey = `${tx.referenceDocument}_${productId}`;
+                        if (reqMap.has(reqKey)) {
+                            const approvedQty = reqMap.get(reqKey)!;
+                            if (approvedQty > 0) {
+                                tx.quantityOut = approvedQty;
+                            }
+                        }
+                    }
+                });
             }
+        } catch (e) {
+            console.warn('Requisition items override error:', e);
         }
 
-        if (reqItems.length > 0) {
-            const reqMap = new Map<string, number>();
-            reqItems.forEach((item: any) => {
-                if (item.requisitions?.requisition_number && item.product_id && item.approved_quantity !== null) {
-                    reqMap.set(`${item.requisitions.requisition_number}_${item.product_id}`, item.approved_quantity);
-                }
-            });
+        // 4. Fetch GRNs that might be newly added adjustments or receipts not yet in the view
+        try {
+            const { data: additionalGrns } = await supabase.from('goods_received_notes')
+                .select('id, grn_number, received_date, source_type, notes, goods_received_items!inner(product_id, quantity_received)')
+                .eq('status', 'Completed')
+                .eq('goods_received_items.product_id', productId)
+                .lte('received_date', endDateTime);
+                
+            if (additionalGrns) {
+                for (const grn of additionalGrns) {
+                    const exists = txs.some(t => t.referenceDocument === grn.grn_number || t.referenceDocument === grn.id);
+                    if (exists) continue;
+                    
+                    const item = grn.goods_received_items.find((i: any) => i.product_id === productId);
+                    if (item && item.quantity_received !== 0) {
+                        const qty = Number(item.quantity_received) || 0;
+                        const isAdjustment = grn.source_type === 'Other' || (grn.notes && (grn.notes.includes('ปรับสต็อก') || grn.notes.includes('ปรับปรุงยอด')));
+                        const txType = isAdjustment ? 'ปรับสต็อก' : (grn.source_type === 'Return' ? 'รับคืน' : 'รับเข้า');
 
-            txs.forEach(tx => {
-                if (tx.transactionType === 'เบิกจ่าย' && tx.referenceDocument) {
-                    const reqKey = `${tx.referenceDocument}_${productId}`;
-                    if (reqMap.has(reqKey)) {
-                        tx.quantityOut = reqMap.get(reqKey)!;
+                        txs.push({
+                            transactionDate: new Date(grn.received_date),
+                            transactionType: txType,
+                            referenceDocument: grn.grn_number || grn.id,
+                            departmentName: grn.notes || (isAdjustment ? (qty > 0 ? 'ปรับเพิ่มสต็อก' : 'ปรับลดสต็อก') : 'ปรับปรุงยอดจากระบบ'),
+                            quantityIn: qty > 0 ? qty : 0,
+                            quantityOut: qty < 0 ? Math.abs(qty) : 0,
+                            balance: 0 // Will be recalculated by the frontend
+                        });
                     }
                 }
-            });
-        }
-
-        // Fetch GRNs that might be excluded by the RPC (e.g. 'Other' source_type without a PO or newly created adjustments)
-        const { data: additionalGrns } = await supabase.from('goods_received_notes')
-            .select('id, grn_number, received_date, source_type, notes, goods_received_items!inner(product_id, quantity_received)')
-            .eq('status', 'Completed')
-            .eq('goods_received_items.product_id', productId)
-            .lte('received_date', endDateTime);
-            
-        if (additionalGrns) {
-            for (const grn of additionalGrns) {
-                // If it's already in the list (by GRN number or ID), skip it
-                const exists = txs.some(t => t.referenceDocument === grn.grn_number || t.referenceDocument === grn.id);
-                if (exists) continue;
-                
-                const item = grn.goods_received_items.find((i: any) => i.product_id === productId);
-                if (item && item.quantity_received !== 0) {
-                    const qty = item.quantity_received;
-                    const isAdjustment = grn.source_type === 'Other' || (grn.notes && (grn.notes.includes('ปรับสต็อก') || grn.notes.includes('ปรับปรุงยอด')));
-                    const txType = isAdjustment ? 'ปรับสต็อก' : (grn.source_type === 'Return' ? 'รับคืน' : 'รับเข้า');
-
-                    txs.push({
-                        transactionDate: new Date(grn.received_date),
-                        transactionType: txType,
-                        referenceDocument: grn.grn_number || grn.id,
-                        departmentName: grn.notes || (isAdjustment ? 'ปรับสต็อก' : 'ปรับปรุงยอดจากระบบ'),
-                        quantityIn: qty > 0 ? qty : 0,
-                        quantityOut: qty < 0 ? Math.abs(qty) : 0,
-                        balance: 0 // Will be recalculated by the frontend
-                    });
-                }
             }
+        } catch (e) {
+            console.warn('Additional GRNs error:', e);
         }
         
-        // Fetch direct loan transactions so they also appear in Stock Card as "ยืมสินค้า"
+        // 5. Fetch direct loan transactions so they also appear in Stock Card as "ยืมสินค้า"
         try {
             const { data: loanTxns } = await supabase.from('loan_transactions')
                 .select(`
@@ -1120,12 +1218,13 @@ export const supabaseService = {
                 if (exists) return;
 
                 const item = (txn.items || []).find((i: any) => i.product_id === productId);
-                if (item && item.quantity > 0) {
+                if (item && Number(item.quantity) > 0) {
+                    const isCompleted = txn.status === 'Completed';
                     txs.push({
                         transactionDate: new Date(txn.created_at),
-                        transactionType: 'ยืมสินค้า',
+                        transactionType: isCompleted ? 'ยืมสินค้า' : 'กำลังยืม',
                         referenceDocument: txn.transaction_number || txn.id,
-                        departmentName: txn.borrower_name || 'ขอยืมเวชภัณฑ์',
+                        departmentName: `${txn.borrower_name || 'ขอยืมเวชภัณฑ์'} (${txn.status === 'Active' ? 'กำลังยืม' : txn.status})`,
                         quantityIn: 0,
                         quantityOut: Number(item.quantity) || 0,
                         balance: 0

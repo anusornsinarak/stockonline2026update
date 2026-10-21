@@ -9,11 +9,10 @@ import TableTemplate from './TableTemplate';
 import CubeIcon from '../icons/CubeIcon';
 import GrnDetailModal from './GrnDetailModal';
 import Modal from '../Modal';
-import PlusIcon from '../icons/PlusIcon';
-import MinusIcon from '../icons/MinusIcon';
 import PencilSquareIcon from '../icons/PencilSquareIcon';
 import MagnifyingGlassIcon from '../icons/MagnifyingGlassIcon';
 import ChevronDownIcon from '../icons/ChevronDownIcon';
+import RefreshIcon from '../icons/RefreshIcon';
 import StockAdjustmentModal from './StockAdjustmentModal';
 
 
@@ -180,19 +179,28 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         }
     }, [selectedProduct, dateRange, currentStock]);
 
+    const fetchHistoryRef = useRef(fetchAndProcessHistory);
+    useEffect(() => {
+        fetchHistoryRef.current = fetchAndProcessHistory;
+    }, [fetchAndProcessHistory]);
+
+    // Fetch history when selectedProduct, dateRange, or currentStock changes
     useEffect(() => {
         fetchAndProcessHistory();
-    }, [fetchAndProcessHistory, inventory]); 
+    }, [fetchAndProcessHistory]); 
 
-    // Listen to real-time background refresh events
+    // Listen to real-time background refresh events without infinite looping
     useEffect(() => {
         const handleRefresh = (e: any) => {
-            onDataChange();
-            fetchAndProcessHistory();
+            const detail = e?.detail;
+            if (detail?.productId && selectedProductId && detail.productId !== selectedProductId) {
+                return;
+            }
+            fetchHistoryRef.current();
         };
         window.addEventListener('app-data-refresh', handleRefresh);
         return () => window.removeEventListener('app-data-refresh', handleRefresh);
-    }, [onDataChange, fetchAndProcessHistory]);
+    }, [selectedProductId]);
 
     // Handle outside click for searchable select
     useEffect(() => {
@@ -247,16 +255,14 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
         // Exclude opening record when summing in-range stats
         const movementItems = items.filter(tx => tx.transactionType !== 'ยอดยกมา');
 
-        // Summary Card Rules:
-        // - totalIn: Sum qty_in for receive & positive adjustment transactions in date range
-        // - totalOut: Sum qty_out for issue transactions in date range
+        // Summary Card Rules (Point 5):
+        // - totalIn: Sum qty_in for all movements in date range
+        // - totalOut: Sum qty_out for all movements in date range
         const totalIn = movementItems
-            .filter(tx => ['รับเข้า', 'RECEIVE', 'รับคืน', 'RETURN', 'ปรับสต็อก', 'ADJUSTMENT'].includes(tx.transactionType || '') && (tx.quantityIn || 0) > 0)
-            .reduce((sum, tx) => sum + (tx.quantityIn || 0), 0);
+            .reduce((sum, tx) => sum + (Number(tx.quantityIn) || 0), 0);
 
         const totalOut = movementItems
-            .filter(tx => ['เบิกจ่าย', 'ISSUE'].includes(tx.transactionType || '') && (tx.quantityOut || 0) > 0)
-            .reduce((sum, tx) => sum + (tx.quantityOut || 0), 0);
+            .reduce((sum, tx) => sum + (Number(tx.quantityOut) || 0), 0);
 
         // Apply type filter if selected
         if (typeFilter !== 'all') {
@@ -422,7 +428,19 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
                                             <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} className="ml-2 border-slate-300 rounded-md shadow-sm text-sm p-1.5 dark:bg-slate-700"/>
                                         </div>
                                     </div>
-                                    <div className="flex justify-end gap-3 self-end md:self-center">
+                                    <div className="flex flex-wrap justify-end gap-3 self-end md:self-center">
+                                        <button 
+                                            onClick={() => {
+                                                onDataChange();
+                                                fetchAndProcessHistory();
+                                            }} 
+                                            disabled={isLoading}
+                                            className="flex items-center gap-2 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-2 px-3 rounded-lg border border-slate-300 dark:border-slate-600 transition-colors shadow-xs"
+                                            title="รีเฟรชข้อมูลสต็อก"
+                                        >
+                                            <RefreshIcon className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-500' : ''}`}/>
+                                            รีเฟรช
+                                        </button>
                                         <button onClick={handleExport} className="flex items-center gap-2 bg-green-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700"><DownloadIcon className="w-5 h-5"/> Excel</button>
                                         <button onClick={() => window.print()} className="flex items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"><PrinterIcon className="w-5 h-5"/> พิมพ์</button>
                                     </div>
@@ -528,6 +546,10 @@ const StockCardView: React.FC<StockCardViewProps> = ({ allProducts = [], invento
                                                         ) : isReceive ? (
                                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200">
                                                                 รับเข้า
+                                                            </span>
+                                                        ) : (tx.transactionType === 'ยืมสินค้า' || tx.transactionType === 'กำลังยืม' || tx.transactionType === 'LOAN') ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200">
+                                                                {tx.transactionType}
                                                             </span>
                                                         ) : (
                                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">

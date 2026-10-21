@@ -131,6 +131,8 @@ export interface Requisition {
     status: RequisitionStatus;
     type: 'Normal' | 'OffCycle' | 'Urgent';
     urgentReason?: string | null;
+    documentRefNo?: string | null;
+    requisitionPeriod?: string | null;
     createdAt: Date;
     submittedAt: Date | null;
     approvedAt: Date | null;

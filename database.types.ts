@@ -706,6 +706,8 @@ export type Database = {
           approved_at: string | null
           type: "Normal" | "OffCycle" | "Urgent"
           urgent_reason: string | null
+          document_ref_no: string | null
+          requisition_period: string | null
         }
         Insert: {
           approver_name?: string | null
@@ -723,6 +725,8 @@ export type Database = {
           approved_at?: string | null
           type?: "Normal" | "OffCycle" | "Urgent"
           urgent_reason?: string | null
+          document_ref_no?: string | null
+          requisition_period?: string | null
         }
         Update: {
           approver_name?: string | null
@@ -740,6 +744,8 @@ export type Database = {
           approved_at?: string | null
           type?: "Normal" | "OffCycle" | "Urgent"
           urgent_reason?: string | null
+          document_ref_no?: string | null
+          requisition_period?: string | null
         }
       }
       survey_submissions: {

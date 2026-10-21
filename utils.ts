@@ -88,3 +88,112 @@ export const safeRemoveStorage = (key: string): void => {
         localStorage.removeItem(key);
     } catch (e) {}
 };
+
+export const THAI_MONTH_NAMES = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+];
+
+/**
+ * Returns default requisition period string in Thai format, e.g. "ตุลาคม 2569"
+ */
+export const getDefaultRequisitionPeriod = (date: Date = new Date()): string => {
+  const d = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
+  const thaiYear = d.getFullYear() + 543;
+  return `${THAI_MONTH_NAMES[d.getMonth()]} ${thaiYear}`;
+};
+
+/**
+ * Generates dropdown options for requisition period:
+ * - Fiscal Year option
+ * - 12 months for current year, previous year, and next year
+ */
+export const getRequisitionPeriodOptions = (date: Date = new Date()): { value: string; label: string }[] => {
+  const d = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
+  const currentYearBE = d.getFullYear() + 543;
+  const fiscalYearBE = getFiscalYearBE(d);
+
+  const options: { value: string; label: string }[] = [];
+
+  // Fiscal year option
+  options.push({
+    value: `ประจำปีงบประมาณ ${fiscalYearBE}`,
+    label: `⭐ ประจำปีงบประมาณ ${fiscalYearBE}`
+  });
+
+  // Generate months for years (past, current, next)
+  const years = [currentYearBE, currentYearBE - 1, currentYearBE + 1];
+  for (const year of years) {
+    for (let m = 0; m < 12; m++) {
+      const monthName = THAI_MONTH_NAMES[m];
+      const periodStr = `${monthName} ${year}`;
+      if (!options.some(opt => opt.value === periodStr)) {
+        options.push({ value: periodStr, label: `${monthName} ${year}` });
+      }
+    }
+  }
+
+  return options;
+};
+
+/**
+ * Encodes documentRefNo and requisitionPeriod into a safe tag within urgentReason
+ * ensuring 100% backward compatibility even if columns don't exist in Supabase DB yet.
+ */
+export const encodeRequisitionMeta = (
+  urgentReason?: string | null,
+  documentRefNo?: string | null,
+  requisitionPeriod?: string | null
+): string | null => {
+  const meta: { docRef?: string; period?: string } = {};
+  if (documentRefNo && documentRefNo.trim()) {
+    meta.docRef = documentRefNo.trim();
+  }
+  if (requisitionPeriod && requisitionPeriod.trim()) {
+    meta.period = requisitionPeriod.trim();
+  }
+
+  const clean = urgentReason ? urgentReason.trim() : '';
+  if (Object.keys(meta).length === 0) {
+    return clean || null;
+  }
+
+  const metaTag = `[META:${JSON.stringify(meta)}]`;
+  return clean ? `${metaTag} ${clean}` : metaTag;
+};
+
+/**
+ * Decodes metadata from raw urgentReason string.
+ */
+export const decodeRequisitionMeta = (
+  rawReason?: string | null,
+  rawName?: string | null,
+  createdAt?: string | Date | null
+): { cleanReason: string | null; documentRefNo: string | null; requisitionPeriod: string } => {
+  let cleanReason: string | null = rawReason || null;
+  let documentRefNo: string | null = null;
+  let requisitionPeriod: string = '';
+
+  if (rawReason && typeof rawReason === 'string' && rawReason.startsWith('[META:')) {
+    const closeIdx = rawReason.indexOf(']');
+    if (closeIdx > 6) {
+      try {
+        const jsonStr = rawReason.slice(6, closeIdx);
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.docRef) documentRefNo = String(parsed.docRef).trim();
+        if (parsed.period) requisitionPeriod = String(parsed.period).trim();
+        const remaining = rawReason.slice(closeIdx + 1).trim();
+        cleanReason = remaining || null;
+      } catch (e) {
+        // Fallback gracefully on parse error
+      }
+    }
+  }
+
+  if (!requisitionPeriod) {
+    const d = createdAt ? new Date(createdAt) : new Date();
+    requisitionPeriod = getDefaultRequisitionPeriod(d);
+  }
+
+  return { cleanReason, documentRefNo, requisitionPeriod };
+};

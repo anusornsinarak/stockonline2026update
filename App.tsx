@@ -176,20 +176,19 @@ const App: React.FC = () => {
       }, 500);
   }, [fetchNotifications]);
 
-  // Periodic background sync & visibility change sync
+  // Periodic notification sync (without triggering disruptive background screen reloads)
   useEffect(() => {
       if (!user?.id) return;
       fetchNotifications(true);
 
+      // Periodically check notifications only (quietly in the background, no data refresh loop)
       const interval = setInterval(() => {
           fetchNotifications(true);
-          triggerBackgroundRefresh('periodic-sync');
-      }, 45000);
+      }, 60000);
 
       const handleVisibilityChange = () => {
           if (document.visibilityState === 'visible') {
               fetchNotifications(true);
-              triggerBackgroundRefresh('tab-visibility');
           }
       };
 
@@ -199,9 +198,9 @@ const App: React.FC = () => {
           clearInterval(interval);
           document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
-  }, [user?.id, fetchNotifications, triggerBackgroundRefresh]);
+  }, [user?.id, fetchNotifications]);
 
-  // Realtime WebSocket channel for instant background updates
+  // Realtime WebSocket channel: Background refresh ONLY when a new requisition is submitted or new notification arrives
   useEffect(() => {
       if (!user?.id) {
           if (activeChannelRef.current) {
@@ -224,12 +223,10 @@ const App: React.FC = () => {
               filter: `recipient_id=eq.${user.id}` 
           },
           (payload) => {
-              // Play sound, show notification alert
               fetchNotifications(false);
-              // Trigger silent background refresh of dashboard and lists
               triggerBackgroundRefresh('notification-new');
           })
-          // 2. Notification update (marked read, etc.)
+          // 2. Notification update (marked read)
           .on('postgres_changes', { 
               event: 'UPDATE', 
               schema: 'public', 
@@ -239,23 +236,14 @@ const App: React.FC = () => {
           () => {
               fetchNotifications(true);
           })
-          // 3. Requisitions created or updated (submitted, approved, status changed)
+          // 3. New Requisition submitted into the system (INSERT only, avoiding refresh on drafts or keystrokes)
           .on('postgres_changes', { 
-              event: '*', 
+              event: 'INSERT', 
               schema: 'public', 
               table: 'requisitions' 
           },
           (payload) => {
-              triggerBackgroundRefresh(`requisition-${payload.eventType}`);
-          })
-          // 4. Requisition items updated
-          .on('postgres_changes', { 
-              event: '*', 
-              schema: 'public', 
-              table: 'requisition_items' 
-          },
-          (payload) => {
-              triggerBackgroundRefresh(`requisition-items-${payload.eventType}`);
+              triggerBackgroundRefresh('requisition-new');
           })
           .subscribe();
 
