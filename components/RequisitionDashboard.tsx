@@ -60,9 +60,11 @@ export const RequisitionPrintView: React.FC<{
                                 <div className="text-left">
                                     <p>เลขที่: <span className="font-bold">{req.requisitionNumber || (req.status === 'Draft' ? 'ฉบับร่าง' : '....................')}</span></p>
                                     <p>ชื่อใบเบิก: <span className="font-bold">{req.name}</span></p>
+                                    {req.documentRefNo && <p>เลขที่หนังสืออ้างอิง: <span className="font-bold">{req.documentRefNo}</span></p>}
                                 </div>
                                 <div className="text-center">
                                     <p>หน่วยงาน: <span className="font-bold">{req.departmentName || departmentName || '........................................................'}</span></p>
+                                    {req.requisitionPeriod && <p>รอบเดือนที่เบิก: <span className="font-bold">{req.requisitionPeriod}</span></p>}
                                 </div>
                                 <div className="text-right">
                                     <p>วันที่เบิก: <span className="font-bold">{new Date(req.createdAt || Date.now()).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>
@@ -807,9 +809,19 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
                                         <div className="flex-grow">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <p className="font-bold text-lg text-slate-800 dark:text-slate-100 leading-tight">{req.name}</p>
+                                                {req.requisitionPeriod && (
+                                                    <span className="px-2 py-0.5 rounded text-xs font-semibold bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300">
+                                                        {req.requisitionPeriod}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <div className="text-sm font-bold text-sky-600 dark:text-sky-400 leading-tight mb-2">
-                                                {department.name}
+                                            <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-sky-600 dark:text-sky-400 leading-tight mb-2">
+                                                <span>{department.name}</span>
+                                                {req.documentRefNo && (
+                                                    <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+                                                        (เลขที่หนังสือ: {req.documentRefNo})
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="flex flex-wrap items-center gap-4 text-[10px] uppercase font-bold tracking-wider">
                                                 <span className="text-slate-400">ขอเบิก: {formatCurrency(requestedVal)}</span>
@@ -858,16 +870,28 @@ const RequisitionDashboard: React.FC<RequisitionDashboardProps> = ({ department,
                                                 />
                                             </div>
                                             <div>
-                                                <span className="text-[10px] font-bold text-slate-400 block">#{req.requisitionNumber || 'Draft'}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-slate-400">#{req.requisitionNumber || 'Draft'}</span>
+                                                    {req.requisitionPeriod && (
+                                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300">
+                                                            {req.requisitionPeriod}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="font-bold text-base text-slate-800 dark:text-slate-100 leading-tight">{req.name}</p>
                                             </div>
                                         </div>
                                         <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full shadow-sm ${statusInfo.color}`}>{statusInfo.text}</span>
                                     </div>
                                     
-                                    <div className="flex items-center gap-2 mb-3">
+                                    <div className="flex flex-wrap items-center gap-2 mb-3">
                                         <div className="w-1 h-4 bg-sky-500 rounded-full"></div>
                                         <p className="text-xs font-bold text-sky-600">{department.name}</p>
+                                        {req.documentRefNo && (
+                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
+                                                (หนังสือ: {req.documentRefNo})
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 mb-4">

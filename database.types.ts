@@ -708,6 +708,8 @@ export type Database = {
           urgent_reason: string | null
           document_ref_no: string | null
           requisition_period: string | null
+          updated_at?: string | null
+          status_updated_at?: string | null
         }
         Insert: {
           approver_name?: string | null

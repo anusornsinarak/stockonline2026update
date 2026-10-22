@@ -197,3 +197,45 @@ export const decodeRequisitionMeta = (
 
   return { cleanReason, documentRefNo, requisitionPeriod };
 };
+
+/**
+ * Checks if a timestamp has exceeded the threshold in minutes (default 60 minutes / 1 hour).
+ * Logic: (new Date() - new Date(updatedAt)) > 60 * 60 * 1000
+ */
+export const isOverdue = (updatedAt?: Date | string | number | null, maxMinutes: number = 60): boolean => {
+  if (!updatedAt) return false;
+  const time = new Date(updatedAt).getTime();
+  if (isNaN(time)) return false;
+  return (Date.now() - time) > maxMinutes * 60 * 1000;
+};
+
+/**
+ * Helper to get the most accurate timestamp for a requisition's picking state.
+ * Fallbacks from status_updated_at -> updated_at -> approved_at -> submitted_at -> created_at.
+ */
+export const getRequisitionPickingTimestamp = (req?: {
+  statusUpdatedAt?: Date | string | null;
+  status_updated_at?: Date | string | null;
+  updatedAt?: Date | string | null;
+  updated_at?: Date | string | null;
+  approvedAt?: Date | string | null;
+  approved_at?: Date | string | null;
+  submittedAt?: Date | string | null;
+  createdAt?: Date | string | null;
+  created_at?: Date | string | null;
+  [key: string]: any;
+} | null): Date | string | null => {
+  if (!req) return null;
+  return (
+    req.statusUpdatedAt ||
+    req.status_updated_at ||
+    req.updatedAt ||
+    req.updated_at ||
+    req.approvedAt ||
+    req.approved_at ||
+    req.submittedAt ||
+    req.createdAt ||
+    req.created_at ||
+    null
+  );
+};

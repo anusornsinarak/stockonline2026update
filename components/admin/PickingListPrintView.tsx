@@ -87,7 +87,11 @@ export const PickingListPrintView: React.FC<PickingListPrintViewProps> = ({ requ
                     <header className="text-center mb-6">
                         <h2 className="text-xl font-bold">ใบจัดของ (Picking List)</h2>
                         <p className="text-base">เลขที่: {requisition.requisitionNumber} ({requisition.name})</p>
-                        <p className="text-base">หน่วยงาน: {departmentName}</p>
+                        <p className="text-base">
+                            หน่วยงาน: {departmentName}
+                            {requisition.requisitionPeriod && ` | รอบเดือนที่เบิก: ${requisition.requisitionPeriod}`}
+                            {requisition.documentRefNo && ` | เลขที่หนังสือ: ${requisition.documentRefNo}`}
+                        </p>
                     </header>
                     
                     <h3 className="font-semibold mt-4">รายการอนุมัติ</h3>
@@ -109,7 +113,11 @@ export const PickingListPrintView: React.FC<PickingListPrintViewProps> = ({ requ
                     <header className="text-center mb-6">
                         <h2 className="text-xl font-bold">ใบยืม (Loan List)</h2>
                         <p className="text-base">จากใบเบิกเลขที่: {requisition.requisitionNumber} ({requisition.name})</p>
-                        <p className="text-base">หน่วยงาน: {departmentName}</p>
+                        <p className="text-base">
+                            หน่วยงาน: {departmentName}
+                            {requisition.requisitionPeriod && ` | รอบเดือนที่เบิก: ${requisition.requisitionPeriod}`}
+                            {requisition.documentRefNo && ` | เลขที่หนังสือ: ${requisition.documentRefNo}`}
+                        </p>
                     </header>
                     <h3 className="font-semibold mt-6">รายการยืม</h3>
                     <table className="w-full text-left border-collapse border border-slate-400 table-fixed">

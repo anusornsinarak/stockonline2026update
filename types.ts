@@ -136,6 +136,8 @@ export interface Requisition {
     createdAt: Date;
     submittedAt: Date | null;
     approvedAt: Date | null;
+    updatedAt?: Date | null;
+    statusUpdatedAt?: Date | null;
     items?: RequisitionItem[];
     requesterName?: string | null;
     requesterPosition?: string | null;

@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 // FIX: Added Requisition to imports to resolve 'Cannot find name' error on line 206.
 import { Department, Product, LoanItem, Requisition } from '../../types';
 import { supabaseService } from '../../services/supabaseService';
+import { getDefaultRequisitionPeriod, getRequisitionPeriodOptions } from '../../utils';
 import Modal from '../Modal';
 import PlusIcon from '../icons/PlusIcon';
 import TrashIcon from '../icons/TrashIcon';
@@ -34,6 +35,9 @@ const CreateRequisitionForDeptModal: React.FC<CreateRequisitionForDeptModalProps
     const [selectedDeptId, setSelectedDeptId] = useState<string>('');
     const [items, setItems] = useState<{ productId: string; quantity: number }[]>([]);
     const [requisitionName, setRequisitionName] = useState('');
+    const [documentRefNo, setDocumentRefNo] = useState('');
+    const [requisitionPeriod, setRequisitionPeriod] = useState(() => getDefaultRequisitionPeriod());
+    const periodOptions = useMemo(() => getRequisitionPeriodOptions(), []);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
@@ -71,6 +75,8 @@ const CreateRequisitionForDeptModal: React.FC<CreateRequisitionForDeptModalProps
             setSelectedDeptId(departments[0]?.id || '');
             setItems([]);
             setRequisitionName('');
+            setDocumentRefNo('');
+            setRequisitionPeriod(getDefaultRequisitionPeriod());
             setError('');
             setIsSaving(false);
             setSearchTerm('');
@@ -203,12 +209,18 @@ const CreateRequisitionForDeptModal: React.FC<CreateRequisitionForDeptModalProps
                 onSave(false); // Keep open
 
             } else {
+                if (!requisitionPeriod || !requisitionPeriod.trim()) {
+                    setError('กรุณาเลือกรอบเดือนที่เบิก (จำเป็น)');
+                    return;
+                }
                 const validItems = items.filter(i => i.quantity > 0);
                 const requisitionData: Partial<Omit<Requisition, 'items' | 'totalValue' | 'departmentName'>> = {
                     departmentId: selectedDeptId,
                     name: requisitionName,
                     status: 'Submitted',
                     type: 'Normal',
+                    documentRefNo: documentRefNo.trim() || null,
+                    requisitionPeriod: requisitionPeriod.trim(),
                     submittedAt: new Date(),
                     requesterName: 'แอดมิน (สร้างแทน)',
                     requesterPosition: 'เจ้าหน้าที่พัสดุ',
@@ -249,6 +261,36 @@ const CreateRequisitionForDeptModal: React.FC<CreateRequisitionForDeptModalProps
                             value={requisitionName}
                             onChange={e => setRequisitionName(e.target.value)}
                             className="mt-1 block w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg shadow-sm"
+                        />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                            รอบเดือนที่เบิก <span className="text-red-500 font-bold">*</span>
+                        </label>
+                        <select
+                            value={requisitionPeriod}
+                            onChange={e => setRequisitionPeriod(e.target.value)}
+                            className="mt-1 block w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg shadow-sm text-sm"
+                            required
+                        >
+                            {periodOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                            เลขที่หนังสืออ้างอิง/เลขที่หนังสือเบิก <span className="text-xs text-slate-400 font-normal">(ไม่บังคับ)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={documentRefNo}
+                            onChange={e => setDocumentRefNo(e.target.value)}
+                            placeholder="เช่น สธ 0032.001/123"
+                            className="mt-1 block w-full border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-lg shadow-sm text-sm"
                         />
                     </div>
                 </div>

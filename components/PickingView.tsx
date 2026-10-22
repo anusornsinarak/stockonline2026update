@@ -57,6 +57,7 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
     const [deptInventory, setDeptInventory] = useState<any[]>([]);
     const [requisitionHistory, setRequisitionHistory] = useState<Requisition[]>([]);
     const draftSaveTimeout = useRef<number | null>(null);
+    const lastLoadedReqIdRef = useRef<string | null>(null);
 
     // Real-time current stock map (Single Source of Truth)
     const [liveInventoryMap, setLiveInventoryMap] = useState<Map<string, number>>(inventoryMap);
@@ -142,30 +143,48 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                 lastApprovedQty
             };
         });
+
+        // Background update of the SAME requisition currently open:
+        // PRESERVE user input (approvedQuantity, status) while updating background stock / product metadata
+        if (lastLoadedReqIdRef.current === requisition.id) {
+            setItems(prevItems => {
+                if (prevItems.length === 0) return initialItems;
+                return prevItems.map(prev => {
+                    const latest = initialItems.find(i => i.productId === prev.productId);
+                    return {
+                        ...prev,
+                        product: latest?.product || prev.product,
+                        minStock: latest?.minStock ?? prev.minStock,
+                        maxStock: latest?.maxStock ?? prev.maxStock,
+                        lastApprovedQty: latest?.lastApprovedQty ?? prev.lastApprovedQty,
+                        quantity: latest?.quantity ?? prev.quantity
+                    };
+                });
+            });
+            return;
+        }
+
+        // Switching or first opening this requisition:
+        lastLoadedReqIdRef.current = requisition.id;
         
         const draftJson = safeGetStorage(`picking_draft_${requisition.id}`);
         if (draftJson && !isPreview) {
             try {
                 const draftItems = JSON.parse(draftJson);
                 if (Array.isArray(draftItems) && draftItems.length > 0) {
-                    // If requisition is still in Draft or Submitted status, 
-                    // we should be careful about loading approvedQuantity from draft 
-                    // as it might contain old auto-filled values from previous versions.
                     const isInitialStatus = ['Draft', 'Submitted'].includes(requisition.status);
 
                     const refreshedItems = draftItems.map((dItem: RequisitionItem) => {
                         const latestInfo = initialItems.find(i => i.productId === dItem.productId);
                         
                         let approvedQty = dItem.approvedQuantity;
-                        // If it's a fresh requisition and the draft has values matching requested quantity,
-                        // it's likely old auto-fill data. Reset it to 0.
                         if (isInitialStatus && approvedQty === dItem.quantity && approvedQty > 0) {
                             approvedQty = 0;
                         }
 
                         return {
                             ...dItem,
-                            quantity: latestInfo?.quantity ?? dItem.quantity, // CRITICAL: Always use latest requested quantity from DB
+                            quantity: latestInfo?.quantity ?? dItem.quantity,
                             approvedQuantity: approvedQty,
                             lastApprovedQty: latestInfo?.lastApprovedQty || 0,
                             minStock: latestInfo?.minStock,
@@ -1038,7 +1057,19 @@ const PickingView: React.FC<PickingViewProps> = ({ requisition, allProducts, inv
                     </button>
                     <div className="text-center">
                         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">อนุมัติ / ระบุจำนวน (V2)</h2>
-                        <p className="text-slate-600 dark:text-slate-300">ใบเบิก #{requisition.requisitionNumber} - {requisition.departmentName}</p>
+                        <p className="text-slate-600 dark:text-slate-300 font-semibold">ใบเบิก #{requisition.requisitionNumber || 'Draft'} - {requisition.departmentName}</p>
+                        <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+                            {requisition.requisitionPeriod && (
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-300">
+                                    รอบเดือนที่เบิก: {requisition.requisitionPeriod}
+                                </span>
+                            )}
+                            {requisition.documentRefNo && (
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300">
+                                    เลขที่หนังสืออ้างอิง: {requisition.documentRefNo}
+                                </span>
+                            )}
+                        </div>
                         <p className="text-xs text-sky-600 dark:text-sky-400 mt-1">
                             * มูลค่าและจำนวนที่อนุมัติจะถูกบันทึก ณ วันที่ทำการอนุมัติ
                         </p>
