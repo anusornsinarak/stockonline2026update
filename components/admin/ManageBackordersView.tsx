@@ -10,8 +10,9 @@ import PrinterIcon from '../icons/PrinterIcon';
 import CheckCircleIcon from '../icons/CheckCircleIcon';
 import MagnifyingGlassIcon from '../icons/MagnifyingGlassIcon';
 import CalendarDaysIcon from '../icons/CalendarDaysIcon';
-// FIX: Added missing import for ArrowPathIcon
 import ArrowPathIcon from '../icons/ArrowPathIcon';
+import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
+import Modal from '../Modal';
 
 interface ManageBackordersViewProps {
     backorders: BackOrderItem[];
@@ -123,6 +124,10 @@ const ManageBackordersView: React.FC<ManageBackordersViewProps> = (props) => {
     const [selectedBackorderIds, setSelectedBackorderIds] = useState<Set<number>>(new Set());
     const [printData, setPrintData] = useState<{ title: string; items: BackOrderItem[] } | null>(null);
     const [isConsolidatingBackorders, setIsConsolidatingBackorders] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+    const [showConsolidateModal, setShowConsolidateModal] = useState(false);
+    const [consolidatedResultModal, setConsolidatedResultModal] = useState<{ reqNumber: string; deptName: string; itemCount: number }[] | null>(null);
     
     const backorderSelectAllRef = useRef<HTMLInputElement>(null);
 
@@ -163,7 +168,36 @@ const ManageBackordersView: React.FC<ManageBackordersViewProps> = (props) => {
             return deptMatch && searchMatch;
         }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [backorders, searchTerm, monthFilter, yearFilter, loanDepartmentFilter]);
-    
+
+    // Selected items info
+    const selectedItems = useMemo(() => {
+        return backorders.filter(item => selectedBackorderIds.has(item.id));
+    }, [backorders, selectedBackorderIds]);
+
+    const selectedTotalValue = useMemo(() => {
+        return selectedItems.reduce((sum, item) => sum + ((item.quantity || 0) * (productMap.get(item.productId)?.pricePerUnit || 0)), 0);
+    }, [selectedItems, productMap]);
+
+    // Group selected items by department for the consolidation modal
+    const selectedGroupedByDept = useMemo(() => {
+        const groups: { deptId: string; deptName: string; items: BackOrderItem[]; totalQty: number; totalValue: number }[] = [];
+        const map = new Map<string, BackOrderItem[]>();
+        selectedItems.forEach(item => {
+            const list = map.get(item.departmentId) || [];
+            list.push(item);
+            map.set(item.departmentId, list);
+        });
+
+        map.forEach((items, deptId) => {
+            const deptName = departmentMap.get(deptId) || items[0]?.departmentName || 'ไม่ระบุหน่วยงาน';
+            const totalQty = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
+            const totalValue = items.reduce((sum, i) => sum + ((i.quantity || 0) * (productMap.get(i.productId)?.pricePerUnit || 0)), 0);
+            groups.push({ deptId, deptName, items, totalQty, totalValue });
+        });
+
+        return groups.sort((a, b) => a.deptName.localeCompare(b.deptName, 'th'));
+    }, [selectedItems, departmentMap, productMap]);
+
     const handleFulfillBackorder = async (item: BackOrderItem) => {
         if (!window.confirm(`คุณต้องการตัดจ่ายรายการค้างจ่าย "${item.productName}"?`)) return;
         setIsProcessingItem(String(item.id));
@@ -175,14 +209,43 @@ const ManageBackordersView: React.FC<ManageBackordersViewProps> = (props) => {
         } finally { setIsProcessingItem(null); }
     };
 
-    const handleConsolidateBackorders = async () => {
+    // Bulk Delete Selected Handler
+    const handleConfirmBulkDelete = async () => {
         if (selectedBackorderIds.size === 0) return;
+        setIsBulkDeleting(true);
+        try {
+            await supabaseService.cancelBackorderItemsBatch(Array.from(selectedBackorderIds));
+            setSelectedBackorderIds(new Set());
+            setShowBulkDeleteModal(false);
+            onDataChange();
+        } catch (err) {
+            console.error('Failed to bulk delete backorder items:', err);
+            alert('เกิดข้อผิดพลาดในการลบรายการ: ' + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setIsBulkDeleting(false);
+        }
+    };
+
+    // Consolidate / Batch Requisition Creation Handler
+    const handleConfirmConsolidate = async () => {
+        if (selectedItems.length === 0) return;
         setIsConsolidatingBackorders(true);
         try {
-            await supabaseService.fulfillBackorderItemsBatch(Array.from(selectedBackorderIds));
+            const result = await supabaseService.createConsolidatedRequisitionsFromBackorders(
+                selectedItems,
+                departmentMap,
+                productMap
+            );
+            setShowConsolidateModal(false);
             setSelectedBackorderIds(new Set());
+            setConsolidatedResultModal(result.createdRequisitions);
             onDataChange();
-        } catch (error) { alert('เกิดข้อผิดพลาด'); } finally { setIsConsolidatingBackorders(false); }
+        } catch (err) {
+            console.error('Failed to consolidate backorders into new requisitions:', err);
+            alert('เกิดข้อผิดพลาดในการสร้างใบเบิกใหม่: ' + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setIsConsolidatingBackorders(false);
+        }
     };
 
     const handleCancelBackorder = async (item: BackOrderItem) => {
@@ -312,16 +375,79 @@ const ManageBackordersView: React.FC<ManageBackordersViewProps> = (props) => {
 
                 {/* Backorders Section */}
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
+                    {/* Floating / Sticky Action Bar when items are selected */}
+                    {selectedBackorderIds.size > 0 && (
+                        <div className="bg-sky-50 dark:bg-sky-950/60 border-b border-sky-200 dark:border-sky-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+                            <div className="flex items-center gap-3">
+                                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-sky-600 text-white font-bold text-sm">
+                                    {selectedBackorderIds.size}
+                                </span>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                        เลือกอยู่ {selectedBackorderIds.size} รายการ
+                                        <span className="text-slate-500 dark:text-slate-400 font-normal ml-2">
+                                            (จาก {selectedGroupedByDept.length} หน่วยงาน • มูลค่ารวม {formatCurrency(selectedTotalValue)})
+                                        </span>
+                                    </p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                        สามารถลบพร้อมกัน หรือรวบสร้างเป็นใบเบิกใหม่แยกตามหน่วยงานได้ทันที
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    onClick={() => setShowConsolidateModal(true)}
+                                    disabled={isConsolidatingBackorders || isBulkDeleting}
+                                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded-lg text-sm shadow-sm transition-all"
+                                >
+                                    <CheckCircleIcon className="w-4 h-4" />
+                                    <span>รวบเบิกที่เลือก ({selectedGroupedByDept.length} หน่วยงาน)</span>
+                                </button>
+                                <button
+                                    onClick={() => setShowBulkDeleteModal(true)}
+                                    disabled={isConsolidatingBackorders || isBulkDeleting}
+                                    className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded-lg text-sm shadow-sm transition-all"
+                                >
+                                    <TrashIcon className="w-4 h-4" />
+                                    <span>ลบรายการที่เลือก ({selectedBackorderIds.size})</span>
+                                </button>
+                                <button
+                                    onClick={handlePrintSelected}
+                                    className="flex items-center gap-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-medium py-1.5 px-3 rounded-lg text-sm transition-all"
+                                >
+                                    <PrinterIcon className="w-4 h-4" />
+                                    <span>พิมพ์ที่เลือก</span>
+                                </button>
+                                <button
+                                    onClick={() => setSelectedBackorderIds(new Set())}
+                                    className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium px-2 py-1"
+                                >
+                                    ยกเลิกการเลือก
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="p-4 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30 flex flex-col sm:flex-row justify-between items-center gap-3">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                             <CubeIcon className="w-5 h-5 text-orange-500" />
                             รายการค้างจ่าย ({filteredBackorders.length})
                         </h3>
                         <div className="flex gap-2">
+                            {selectedBackorderIds.size > 0 && (
+                                <button 
+                                    onClick={() => setShowBulkDeleteModal(true)} 
+                                    disabled={isBulkDeleting} 
+                                    className="flex items-center gap-1.5 bg-red-50 text-red-600 border border-red-200 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 font-bold py-1.5 px-3 rounded-lg hover:bg-red-100 transition-all text-sm"
+                                >
+                                    <TrashIcon className="w-4 h-4"/>
+                                    ลบที่เลือก ({selectedBackorderIds.size})
+                                </button>
+                            )}
                             <button 
-                                onClick={handleConsolidateBackorders} 
+                                onClick={() => setShowConsolidateModal(true)} 
                                 disabled={selectedBackorderIds.size === 0 || isConsolidatingBackorders} 
-                                className="flex items-center gap-2 bg-emerald-600 text-white font-bold py-1.5 px-4 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-all text-sm"
+                                className="flex items-center gap-2 bg-emerald-600 text-white font-bold py-1.5 px-4 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-all text-sm shadow-sm"
                             >
                                 <CheckCircleIcon className="w-4 h-4"/>
                                 รวบเบิกที่เลือก ({selectedBackorderIds.size})
@@ -337,7 +463,7 @@ const ManageBackordersView: React.FC<ManageBackordersViewProps> = (props) => {
                         </div>
                     </div>
                     <TableTemplate headers={[
-                        <div className="flex items-center justify-center"><input type="checkbox" ref={backorderSelectAllRef} onChange={handleSelectAllBackorders} className="rounded" /></div>, 
+                        <div key="select-all" className="flex items-center justify-center"><input type="checkbox" ref={backorderSelectAllRef} onChange={handleSelectAllBackorders} className="rounded" title="เลือกทั้งหมด" /></div>, 
                         'วันที่สร้าง', 'หน่วยงาน', 'รายการ', {name: 'จำนวน', className: 'text-right'}, 'ใบเบิกเดิม', {name: 'ดำเนินการ', className: 'text-center'}
                     ]}>
                         {filteredBackorders.map(item => {
@@ -377,6 +503,219 @@ const ManageBackordersView: React.FC<ManageBackordersViewProps> = (props) => {
                         )}
                     </TableTemplate>
                 </div>
+
+                {/* Bulk Delete Confirmation Modal */}
+                {showBulkDeleteModal && (
+                    <Modal
+                        isOpen={showBulkDeleteModal}
+                        onClose={() => !isBulkDeleting && setShowBulkDeleteModal(false)}
+                        title="ยืนยันการลบรายการค้างจ่าย"
+                    >
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg text-red-800 dark:text-red-300">
+                                <ExclamationTriangleIcon className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <h4 className="font-bold text-sm">คุณกำลังจะลบรายการค้างจ่ายจำนวน {selectedBackorderIds.size} รายการ</h4>
+                                    <p className="text-xs mt-1 text-red-700 dark:text-red-300">
+                                        รายการที่เลือกจะถูกยกเลิกและนำออกจากระบบค้างจ่ายทันที ไม่สามารถย้อนกลับได้
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg divide-y divide-slate-100 dark:divide-slate-800">
+                                {selectedItems.map((item, idx) => (
+                                    <div key={item.id} className="p-2.5 text-xs flex justify-between items-center bg-white dark:bg-slate-800">
+                                        <div className="flex-1 pr-2">
+                                            <span className="text-slate-400 mr-2">{idx + 1}.</span>
+                                            <span className="font-semibold text-slate-800 dark:text-slate-200">{item.productName}</span>
+                                            <span className="text-slate-500 ml-2">({item.departmentName} • ใบเบิก #{item.requisitionNumber})</span>
+                                        </div>
+                                        <div className="font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                            {(item.quantity || 0).toLocaleString()} ชิ้น
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBulkDeleteModal(false)}
+                                    disabled={isBulkDeleting}
+                                    className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmBulkDelete}
+                                    disabled={isBulkDeleting}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition-colors shadow-sm"
+                                >
+                                    {isBulkDeleting ? (
+                                        <>
+                                            <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                            <span>กำลังลบ...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <TrashIcon className="w-4 h-4" />
+                                            <span>ยืนยันลบ {selectedBackorderIds.size} รายการ</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </Modal>
+                )}
+
+                {/* Batch Requisition Creation (Consolidate) Modal */}
+                {showConsolidateModal && (
+                    <Modal
+                        isOpen={showConsolidateModal}
+                        onClose={() => !isConsolidatingBackorders && setShowConsolidateModal(false)}
+                        title="รวบรายการค้างจ่าย สร้างเป็นใบเบิกใหม่ตามหน่วยงาน"
+                    >
+                        <div className="space-y-4">
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-900 dark:text-emerald-200">
+                                <h4 className="font-bold text-sm flex items-center gap-2">
+                                    <CheckCircleIcon className="w-5 h-5 text-emerald-600" />
+                                    สร้างใบเบิกใหม่แยกตามหน่วยงานอัตโนมัติ ({selectedGroupedByDept.length} ใบเบิก)
+                                </h4>
+                                <ul className="text-xs mt-1.5 space-y-1 text-emerald-800 dark:text-emerald-300 list-disc list-inside">
+                                    <li>ระบบจะจัดกลุ่มรายการที่เลือกตามหน่วยงาน และสร้างใบเบิกใหม่แยกแต่ละหน่วยงานทันที</li>
+                                    <li>ใบเบิกเดิมจะไม่ถูกเปลี่ยนแปลงข้อมูลประวัติ</li>
+                                    <li>รายการค้างจ่ายเดิมที่เลือกรวม {selectedItems.length} รายการ จะถูกปรับสถานะเป็นโอนแล้ว เพื่อป้องกันการเบิกซ้ำ</li>
+                                    <li>ใบเบิกใหม่จะเข้าสู่สถานะ <span className="font-bold">"กำลังจัดของ (Picking)"</span> พร้อมเบิกจ่ายทันที</li>
+                                </ul>
+                            </div>
+
+                            <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                                {selectedGroupedByDept.map((group, idx) => (
+                                    <div key={group.deptId} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+                                        <div className="bg-slate-100 dark:bg-slate-700/60 px-3 py-2 flex justify-between items-center border-b border-slate-200 dark:border-slate-700">
+                                            <div className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center font-bold">
+                                                    {idx + 1}
+                                                </span>
+                                                <span>หน่วยงาน: {group.deptName}</span>
+                                            </div>
+                                            <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                                {group.items.length} รายการ ({group.totalQty.toLocaleString()} ชิ้น)
+                                            </div>
+                                        </div>
+                                        <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                                            {group.items.map(item => (
+                                                <div key={item.id} className="p-2 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                                                    <div>
+                                                        <span className="font-medium text-slate-700 dark:text-slate-200">{item.productName}</span>
+                                                        <span className="text-[11px] text-slate-400 ml-2">(ใบเบิกเดิม #{item.requisitionNumber})</span>
+                                                    </div>
+                                                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                        {(item.quantity || 0).toLocaleString()} ชิ้น
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-700">
+                                <div className="text-xs text-slate-500">
+                                    รวมทั้งหมด: <span className="font-bold text-slate-800 dark:text-slate-200">{selectedItems.length} รายการ</span> • มูลค่ารวม <span className="font-bold text-sky-600">{formatCurrency(selectedTotalValue)}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConsolidateModal(false)}
+                                        disabled={isConsolidatingBackorders}
+                                        className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                    >
+                                        ยกเลิก
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleConfirmConsolidate}
+                                        disabled={isConsolidatingBackorders}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg transition-colors shadow-sm"
+                                    >
+                                        {isConsolidatingBackorders ? (
+                                            <>
+                                                <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                                <span>กำลังสร้างใบเบิกใหม่...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <CheckCircleIcon className="w-4 h-4" />
+                                                <span>ยืนยันสร้างใบเบิกใหม่ ({selectedGroupedByDept.length} ใบ)</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </Modal>
+                )}
+
+                {/* Consolidated Result Success Modal */}
+                {consolidatedResultModal && (
+                    <Modal
+                        isOpen={!!consolidatedResultModal}
+                        onClose={() => setConsolidatedResultModal(null)}
+                        title="สร้างใบเบิกใหม่สำเร็จ"
+                    >
+                        <div className="space-y-4">
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-900 dark:text-emerald-200 flex items-center gap-3">
+                                <CheckCircleIcon className="w-8 h-8 text-emerald-600 flex-shrink-0" />
+                                <div>
+                                    <h4 className="font-bold text-sm">สร้างใบเบิกใหม่เรียบร้อยแล้ว {consolidatedResultModal.length} ใบ</h4>
+                                    <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                        ระบบนำรายการค้างจ่ายเดิมออก และสร้างใบเบิกใหม่เข้าสู่สถานะ "กำลังจัดของ" พร้อมเบิกจ่าย
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">รายการใบเบิกที่สร้างใหม่:</p>
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                    {consolidatedResultModal.map((req, idx) => (
+                                        <div key={idx} className="flex justify-between items-center p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-sky-600 dark:text-sky-400">
+                                                        #{req.reqNumber}
+                                                    </span>
+                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300 font-semibold">
+                                                        กำลังจัดของ
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                                                    หน่วยงาน: <span className="font-medium text-slate-800 dark:text-slate-100">{req.deptName}</span>
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                                                    {req.itemCount} รายการ
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setConsolidatedResultModal(null)}
+                                    className="px-5 py-2 text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors shadow-sm"
+                                >
+                                    ตกลง
+                                </button>
+                            </div>
+                        </div>
+                    </Modal>
+                )}
             </div>
         </div>
     );

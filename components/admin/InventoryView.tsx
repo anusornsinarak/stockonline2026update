@@ -6,6 +6,7 @@ import PencilSquareIcon from '../icons/PencilSquareIcon';
 import ChevronUpIcon from '../icons/ChevronUpIcon';
 import ChevronDownIcon from '../icons/ChevronDownIcon';
 import StockAdjustmentModal from './StockAdjustmentModal';
+import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
 import { supabaseService } from '../../services/supabaseService';
 
 const InventoryView: React.FC<{
@@ -134,6 +135,10 @@ const InventoryView: React.FC<{
         return data;
     }, [products, inventoryMap, searchTerm, sortOrder]);
 
+    const negativeStockCount = useMemo(() => {
+        return products.filter(p => (inventoryMap.get(p.id)?.quantity ?? 0) < 0).length;
+    }, [products, inventoryMap]);
+
     const timeSince = (date?: Date): string => {
         if (!date) return 'N/A';
         const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
@@ -209,6 +214,39 @@ const InventoryView: React.FC<{
 
     return (
         <div>
+            {negativeStockCount > 0 && (
+                <div className="mb-4 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-red-400 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+                            <ExclamationTriangleIcon className="w-6 h-6 text-yellow-300 animate-bounce" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-sm">แจ้งเตือนสต็อกติดลบ!</span>
+                                <span className="px-2 py-0.5 rounded-full text-xs font-black bg-white text-red-700">
+                                    {negativeStockCount} รายการ
+                                </span>
+                            </div>
+                            <p className="text-xs text-red-100 mt-0.5">
+                                พบรายการสินค้าสต็อกติดลบ {negativeStockCount} รายการ ต้องการปรับสต็อกให้เป็นปัจจุบันหรือไม่?
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const firstNeg = combinedData.find(item => item.quantity < 0);
+                                if (firstNeg) openAdjustModal(firstNeg.product, firstNeg.quantity);
+                            }}
+                            className="px-3.5 py-1.5 bg-white text-red-700 hover:bg-red-50 text-xs font-bold rounded-lg shadow transition-all active:scale-95"
+                        >
+                            ปรับสต็อกรายการแรก
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col md:flex-row gap-4 items-end justify-between">
                 <div className="w-full md:w-1/2">
                     <label htmlFor="search-inventory" className="block text-sm font-medium text-slate-700">
@@ -272,7 +310,23 @@ const InventoryView: React.FC<{
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{item.product.name}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{item.product.unit}</td>
                             <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-bold ${item.quantity <= 0 ? 'text-red-600' : 'text-slate-800'}`}>
-                                {item.quantity.toLocaleString('th-TH')}
+                                {item.quantity < 0 ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                        <span className="font-black text-red-600 animate-pulse">
+                                            {item.quantity.toLocaleString('th-TH')}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => openAdjustModal(item.product, item.quantity)}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-white bg-red-600 hover:bg-red-700 active:scale-95 rounded-md shadow-sm transition-all"
+                                            title="ปรับสต็อกรายการนี้ทันที"
+                                        >
+                                            ปรับสต็อก
+                                        </button>
+                                    </div>
+                                ) : (
+                                    item.quantity.toLocaleString('th-TH')
+                                )}
                             </td>
                             {isBulkMode ? (
                                 <>

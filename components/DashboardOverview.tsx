@@ -15,6 +15,7 @@ import CheckCircleIcon from './icons/CheckCircleIcon';
 import InboxIcon from './icons/InboxIcon';
 import EyeIcon from './icons/EyeIcon';
 import Modal from './Modal';
+import StockAdjustmentModal from './admin/StockAdjustmentModal';
 
 interface DashboardOverviewProps {
     user: User;
@@ -63,6 +64,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
     const [reqStatusFilter, setReqStatusFilter] = useState<'all' | 'pending' | 'completed' | 'other'>('all');
     const [showAllReqs, setShowAllReqs] = useState(false);
     const [selectedReqForModal, setSelectedReqForModal] = useState<Requisition | null>(null);
+
+    // Quick stock adjustment state
+    const [adjustingStockItem, setAdjustingStockItem] = useState<{ product: Product; currentStock: number } | null>(null);
 
     const handleNavigateToRequisitions = () => {
         if (!onNavigate) return;
@@ -388,6 +392,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
         };
     }, [products, inventory, urgentFilter, urgentSearch]);
 
+    // Items with negative stock (currentStock < 0)
+    const negativeStockItems = useMemo(() => {
+        const invMap = new Map(inventory.map(i => [i.productId, i.quantity]));
+        return products
+            .map(p => ({ product: p, currentStock: invMap.get(p.id) ?? 0 }))
+            .filter(item => item.currentStock < 0);
+    }, [products, inventory]);
+
     // Initial load skeleton placeholder (prevents jarring full-screen wipeout)
     if (isLoading && products.length === 0) {
         return (
@@ -508,6 +520,48 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                     </p>
                 </div>
             </div>
+
+            {/* Negative Stock Alert Banner */}
+            {negativeStockItems.length > 0 && (
+                <div className="bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 text-white p-4 sm:p-5 rounded-2xl shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-red-400 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0 shadow-inner">
+                            <ExclamationTriangleIcon className="w-7 h-7 text-yellow-300 animate-bounce" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-black text-base tracking-wide">
+                                    แจ้งเตือนสต็อกติดลบ!
+                                </h3>
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-white text-red-700 shadow-sm">
+                                    {negativeStockItems.length} รายการ
+                                </span>
+                            </div>
+                            <p className="text-xs text-red-100 mt-0.5">
+                                พบรายการสินค้าสต็อกติดลบ {negativeStockItems.length} รายการ ต้องการปรับสต็อกให้เป็นปัจจุบันหรือไม่?
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setAdjustingStockItem({ product: negativeStockItems[0].product, currentStock: negativeStockItems[0].currentStock })}
+                            className="px-4 py-2 bg-white hover:bg-red-50 text-red-700 font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                        >
+                            <span>ปรับสต็อกรายการแรก ({negativeStockItems[0].product.name.slice(0, 22)}...)</span>
+                        </button>
+                        {onNavigate && user.role === 'Admin' && (
+                            <button
+                                type="button"
+                                onClick={() => onNavigate({ type: 'admin', payload: 'inventory' })}
+                                className="px-4 py-2 bg-red-900/60 hover:bg-red-900 text-white font-bold text-xs rounded-xl transition-all"
+                            >
+                                <span>ดูในคลังสินค้า</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* NEW SECTION: รายการที่ควรรีบจัดซื้อ (ใช้ข้อมูล Min / Max Stock) */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
@@ -655,12 +709,31 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                                         )}
                                     </td>
                                     <td className="p-3 text-center">
-                                        <div className="font-bold">
-                                            <span className={item.isOutOfStock ? 'text-red-600 dark:text-red-400 text-sm font-black' : 'text-amber-600 dark:text-amber-400'}>
-                                                {item.currentStock.toLocaleString()}
-                                            </span>
-                                            <span className="text-slate-400 font-normal"> / {item.minStock.toLocaleString()}</span>
-                                        </div>
+                                        {item.currentStock < 0 ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <span className="text-red-600 dark:text-red-400 text-sm font-black tracking-tight">
+                                                        {item.currentStock.toLocaleString()}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAdjustingStockItem({ product: item.product, currentStock: item.currentStock })}
+                                                        className="px-2 py-0.5 text-[10px] font-black text-white bg-red-600 hover:bg-red-700 active:scale-95 rounded-md shadow transition-all cursor-pointer"
+                                                        title="คลิกเพื่อปรับสต็อกให้เป็นปัจจุบันทันที"
+                                                    >
+                                                        ปรับสต็อก
+                                                    </button>
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 font-normal">Min: {item.minStock.toLocaleString()}</div>
+                                            </div>
+                                        ) : (
+                                            <div className="font-bold">
+                                                <span className={item.isOutOfStock ? 'text-red-600 dark:text-red-400 text-sm font-black' : 'text-amber-600 dark:text-amber-400'}>
+                                                    {item.currentStock.toLocaleString()}
+                                                </span>
+                                                <span className="text-slate-400 font-normal"> / {item.minStock.toLocaleString()}</span>
+                                            </div>
+                                        )}
                                         <div className="w-20 mx-auto bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full mt-1 overflow-hidden">
                                             <div 
                                                 className={`h-full rounded-full ${item.isOutOfStock ? 'bg-red-500 w-0' : 'bg-amber-500'}`}
@@ -1215,6 +1288,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({ user, onNa
                         </div>
                     </div>
                 </Modal>
+            )}
+
+            {/* Quick Stock Adjustment Modal */}
+            {adjustingStockItem && (
+                <StockAdjustmentModal
+                    isOpen={!!adjustingStockItem}
+                    onClose={() => setAdjustingStockItem(null)}
+                    product={adjustingStockItem.product}
+                    currentStock={adjustingStockItem.currentStock}
+                    onSuccess={() => {
+                        setAdjustingStockItem(null);
+                        loadData(true);
+                    }}
+                />
             )}
         </div>
     );

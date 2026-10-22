@@ -32,8 +32,8 @@ const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({ isOpen, onC
             setMode('actual');
             setAdjustmentType('increase');
             setQuantity('');
-            setActualStock(currentStock.toString());
-            setNotes('ปรับปรุงจากการนับสต็อกจริง');
+            setActualStock(currentStock < 0 ? '0' : currentStock.toString());
+            setNotes(currentStock < 0 ? 'ปรับปรุงยอดสต็อกติดลบให้เป็นปัจจุบัน (Physical Count)' : 'ปรับปรุงจากการนับสต็อกจริง');
             setError('');
             setIsSaving(false);
         }

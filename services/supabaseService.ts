@@ -2263,6 +2263,135 @@ export const supabaseService = {
         if (error) throw error;
     },
 
+    async cancelBackorderItemsBatch(ids: number[]) {
+        if (!ids || ids.length === 0) return;
+        const { error } = await supabase.from('requisition_items').update({ status: 'Rejected' }).in('id', ids);
+        if (error) throw error;
+    },
+
+    async createConsolidatedRequisitionsFromBackorders(
+        selectedBackorderItems: BackOrderItem[],
+        departmentMap: Map<string, string>,
+        productMap: Map<string, Product>
+    ): Promise<{ createdRequisitions: { reqNumber: string; deptName: string; itemCount: number }[] }> {
+        if (!selectedBackorderItems || selectedBackorderItems.length === 0) {
+            return { createdRequisitions: [] };
+        }
+
+        // 1. Group by department
+        const groupedByDept = new Map<string, BackOrderItem[]>();
+        selectedBackorderItems.forEach(item => {
+            const list = groupedByDept.get(item.departmentId) || [];
+            list.push(item);
+            groupedByDept.set(item.departmentId, list);
+        });
+
+        // 2. Determine running numbers prefix and start max running number
+        const now = new Date();
+        const prefix = getThaiYearMonthPrefix(now);
+        const { data: existingNumbers } = await supabase
+            .from('requisitions')
+            .select('requisition_number')
+            .not('requisition_number', 'is', null)
+            .ilike('requisition_number', `${prefix}%`);
+
+        let maxNum = 0;
+        (existingNumbers || []).forEach(r => {
+            const numPart = r.requisition_number?.slice(4);
+            if (numPart && !isNaN(parseInt(numPart))) {
+                maxNum = Math.max(maxNum, parseInt(numPart));
+            }
+        });
+
+        const createdResults: { reqNumber: string; deptName: string; itemCount: number }[] = [];
+        const originalItemIdsToFulfill: number[] = [];
+
+        for (const [deptId, deptItems] of groupedByDept.entries()) {
+            maxNum++;
+            const newReqNumber = `${prefix}${formatRunningNumber(maxNum)}`;
+            const deptName = departmentMap.get(deptId) || deptItems[0]?.departmentName || 'ไม่ระบุหน่วยงาน';
+
+            // Consolidate duplicate products within the same department if any
+            const productAgg = new Map<string, { quantity: number; originalIds: number[] }>();
+            deptItems.forEach(item => {
+                const existing = productAgg.get(item.productId) || { quantity: 0, originalIds: [] };
+                existing.quantity += (item.quantity || 0);
+                existing.originalIds.push(item.id);
+                productAgg.set(item.productId, existing);
+                originalItemIdsToFulfill.push(item.id);
+            });
+
+            const currentPeriod = getDefaultRequisitionPeriod(now);
+            const encodedMeta = encodeRequisitionMeta(
+                `รวบเบิกจากรายการค้างจ่าย (${deptItems.length} รายการ)`,
+                null,
+                currentPeriod
+            );
+
+            // Create new Requisition header with status 'Picking' so warehouse can prepare items
+            const newReqData: any = {
+                department_id: deptId,
+                name: `ใบเบิกค้างจ่าย - ${deptName} (${now.toLocaleDateString('th-TH')})`,
+                status: 'Picking',
+                type: 'Normal',
+                urgent_reason: encodedMeta,
+                submitted_at: now.toISOString(),
+                requisition_number: newReqNumber,
+                document_ref_no: null,
+                requisition_period: currentPeriod
+            };
+
+            let insertRes = await supabase.from('requisitions').insert(newReqData).select().single();
+            if (insertRes.error && (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))) {
+                const { document_ref_no, requisition_period, ...fallbackData } = newReqData;
+                insertRes = await supabase.from('requisitions').insert(fallbackData).select().single();
+            }
+            if (insertRes.error) throw insertRes.error;
+
+            const newReqId = insertRes.data.id;
+
+            // Insert requisition items
+            const itemsToInsert = Array.from(productAgg.entries()).map(([productId, agg]) => {
+                const product = productMap.get(productId);
+                const price = product?.pricePerUnit ?? 0;
+                return {
+                    requisition_id: newReqId,
+                    product_id: productId,
+                    quantity: agg.quantity,
+                    approved_quantity: agg.quantity,
+                    price_per_unit: price,
+                    status: 'Approved'
+                };
+            });
+
+            const { error: itemsErr } = await supabase.from('requisition_items').insert(itemsToInsert);
+            if (itemsErr) throw itemsErr;
+
+            createdResults.push({
+                reqNumber: newReqNumber,
+                deptName,
+                itemCount: itemsToInsert.length
+            });
+
+            // Notify department
+            const notifMsg = `🔔 สร้างใบเบิกค้างจ่ายใหม่ #${newReqNumber} (${itemsToInsert.length} รายการ) เข้าสู่กระบวนการจัดของเรียบร้อยแล้ว`;
+            this.notifyDepartmentUsers(deptId, notifMsg).catch(e => console.warn('Notif error:', e));
+        }
+
+        // 3. Update original backorder items so they are fulfilled/transferred and never reappear in backorders
+        if (originalItemIdsToFulfill.length > 0) {
+            await supabase
+                .from('requisition_items')
+                .update({ 
+                    status: 'Fulfilled',
+                    reject_reason: 'โอนไปสร้างเป็นใบเบิกใหม่แล้ว'
+                } as any)
+                .in('id', originalItemIdsToFulfill);
+        }
+
+        return { createdRequisitions: createdResults };
+    },
+
     async fulfillLoanItem(item: LoanItem) {
         if (item.isDerived) {
             const { error } = await supabase.from('requisition_items').update({ status: 'LoanFulfilled' }).eq('id', item.id);
